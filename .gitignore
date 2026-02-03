@@ -1,0 +1,28 @@
+# Node
+node_modules/
+.next/
+dist/
+.env*
+!.env.example
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# Database
+*.db
+*.db-journal
+
+# IDE
+.vscode/
+.idea/
+.DS_Store
+
+# Output
+output/
+api/data/*.json
+
+# Large data files
+zara商品.csv

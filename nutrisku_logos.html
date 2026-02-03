@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NutriSKU Logo Concepts</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            background-color: #f8fafc;
+            font-family: 'Inter', sans-serif;
+        }
+
+        .logo-card {
+            transition: all 0.3s ease;
+        }
+
+        .logo-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+        }
+    </style>
+</head>
+
+<body class="p-10">
+    <div class="max-w-6xl mx-auto">
+        <h1 class="text-3xl font-bold text-slate-800 mb-2">NutriSKU Logo Concepts</h1>
+        <p class="text-slate-500 mb-10">Vector-based designs (SVG). Ready for web use & favicon.</p>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+
+            <!-- Context 1: The "Organic Box" -->
+            <div class="logo-card bg-white p-8 rounded-xl border border-slate-200 shadow-sm flex flex-col items-center">
+                <div
+                    class="h-40 w-full bg-slate-50 rounded-lg mb-6 flex items-center justify-center relative overflow-hidden">
+                    <!-- Favicon Preview -->
+                    <div class="absolute top-2 right-2 flex gap-2">
+                        <div class="w-6 h-6 bg-white rounded border border-slate-200 flex items-center justify-center">
+                            <svg width="16" height="16" viewBox="0 0 100 100" fill="none"
+                                xmlns="http://www.w3.org/2000/svg">
+                                <rect x="25" y="40" width="50" height="50" rx="8" fill="#3B82F6" />
+                                <path d="M50 40V20C50 20 65 20 75 35" stroke="#10B981" stroke-width="8"
+                                    stroke-linecap="round" />
+                                <path d="M50 40V25" stroke="#10B981" stroke-width="8" stroke-linecap="round" />
+                            </svg>
+                        </div>
+                    </div>
+
+                    <!-- Main Logo -->
+                    <svg width="120" height="120" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <!-- Box/Cube -->
+                        <rect x="30" y="45" width="60" height="50" rx="8" fill="#3B82F6" class="cube" />
+                        <path d="M30 53L60 68L90 53" stroke="white" stroke-width="4" stroke-opacity="0.3" />
+                        <path d="M60 68V95" stroke="white" stroke-width="4" stroke-opacity="0.3" />
+
+                        <!-- Leaf/Sprout -->
+                        <path d="M60 45V20C60 20 85 20 90 40" stroke="#10B981" stroke-width="8"
+                            stroke-linecap="round" />
+                        <path d="M60 45V25" stroke="#10B981" stroke-width="8" stroke-linecap="round" />
+                        <path d="M60 30C60 30 45 28 40 38" stroke="#34D399" stroke-width="6" stroke-linecap="round" />
+                    </svg>
+                </div>
+                <h3 class="text-lg font-semibold text-slate-800">1. Vital Box</h3>
+                <p class="text-sm text-slate-500 text-center mt-2">Combines a shipping box (SKU) with a growing sprout
+                    (Nutrition). Direct and literal.</p>
+                <div class="mt-6 flex items-center gap-2">
+                    <span class="text-2xl font-bold text-slate-800">Nutri<span class="text-blue-500">SKU</span></span>
+                </div>
+            </div>
+
+            <!-- Concept 2: The "Data Hex" -->
+            <div class="logo-card bg-white p-8 rounded-xl border border-slate-200 shadow-sm flex flex-col items-center">
+                <div
+                    class="h-40 w-full bg-slate-900 rounded-lg mb-6 flex items-center justify-center relative overflow-hidden">
+                    <!-- Favicon Preview -->
+                    <div class="absolute top-2 right-2 flex gap-2">
+                        <div
+                            class="w-6 h-6 bg-slate-800 rounded border border-slate-700 flex items-center justify-center">
+                            <svg width="16" height="16" viewBox="0 0 100 100" fill="none"
+                                xmlns="http://www.w3.org/2000/svg">
+                                <path d="M50 5L93.3 30V80L50 105L6.7 80V30L50 5Z" stroke="#8B5CF6" stroke-width="10" />
+                                <circle cx="50" cy="55" r="15" fill="#22C55E" />
+                            </svg>
+                        </div>
+                    </div>
+
+                    <!-- Main Logo -->
+                    <svg width="120" height="120" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <defs>
+                            <linearGradient id="grad2" x1="0%" y1="0%" x2="100%" y2="0%">
+                                <stop offset="0%" style="stop-color:#6366f1;stop-opacity:1" />
+                                <stop offset="100%" style="stop-color:#8b5cf6;stop-opacity:1" />
+                            </linearGradient>
+                        </defs>
+                        <!-- Hexagon -->
+                        <path d="M60 15L99 37.5V82.5L60 105L21 82.5V37.5L60 15Z" stroke="url(#grad2)" stroke-width="6"
+                            stroke-linecap="round" stroke-linejoin="round" />
+
+                        <!-- Connecting Nodes -->
+                        <circle cx="60" cy="60" r="12" fill="#22C55E" />
+                        <circle cx="60" cy="15" r="5" fill="#8B5CF6" />
+                        <circle cx="99" cy="37.5" r="5" fill="#8B5CF6" />
+                        <circle cx="99" cy="82.5" r="5" fill="#8B5CF6" />
+                        <circle cx="60" cy="105" r="5" fill="#8B5CF6" />
+                        <circle cx="21" cy="82.5" r="5" fill="#8B5CF6" />
+                        <circle cx="21" cy="37.5" r="5" fill="#8B5CF6" />
+
+                        <!-- Internal Lines -->
+                        <path d="M60 60L60 20M60 60L95 40M60 60L25 80" stroke="white" stroke-opacity="0.2"
+                            stroke-width="2" />
+                    </svg>
+                </div>
+                <h3 class="text-lg font-semibold text-slate-800">2. Neural Hex</h3>
+                <p class="text-sm text-slate-500 text-center mt-2">Represents structured data and network nodes.
+                    High-tech, abstract, reliable.</p>
+                <div class="mt-6 flex items-center gap-2 font-mono">
+                    <span class="text-2xl font-bold tracking-tighter text-slate-800">NUTRI<span
+                            class="text-violet-500">/SKU</span></span>
+                </div>
+            </div>
+
+            <!-- Concept 3: The "Minimalist Wordmark" -->
+            <div class="logo-card bg-white p-8 rounded-xl border border-slate-200 shadow-sm flex flex-col items-center">
+                <div
+                    class="h-40 w-full bg-white rounded-lg mb-6 flex items-center justify-center border border-slate-100 relative">
+                    <!-- Favicon Preview -->
+                    <div class="absolute top-2 right-2 flex gap-2">
+                        <div
+                            class="w-6 h-6 bg-slate-50 rounded border border-slate-200 flex items-center justify-center">
+                            <span class="font-bold text-xs text-slate-800">N<span class="text-green-500">.</span></span>
+                        </div>
+                    </div>
+
+                    <!-- Main Logo -->
+                    <svg width="200" height="60" viewBox="0 0 200 60" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <text x="10" y="45" font-family="Arial, sans-serif" font-weight="bold" font-size="40"
+                            fill="#1e293b">NutriSKU</text>
+                        <!-- Stylized Dot on 'i' -->
+                        <circle cx="108" cy="15" r="5" fill="#10B981" /> <!-- Replaces the dot of 'i' -->
+                        <!-- Underline/Smile -->
+                        <path d="M10 55H180" stroke="#10B981" stroke-width="3" stroke-linecap="round" />
+                    </svg>
+                </div>
+                <h3 class="text-lg font-semibold text-slate-800">3. Clean Typographic</h3>
+                <p class="text-sm text-slate-500 text-center mt-2">Focus on the name. The green dot/underline hints at
+                    optimization and growth.</p>
+                <div class="mt-6">
+                    <!-- Actual HTML representation for this one -->
+                    <div class="text-3xl font-bold text-slate-900 tracking-tight">
+                        NutriSKU<span class="text-green-500">.</span>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</body>
+
+</html>
