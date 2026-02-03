@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getPrisma } from '@/lib/prisma';
+import { getD1Database } from '@/lib/cloudflare';
 
 export const runtime = 'edge';
 
@@ -7,20 +7,26 @@ export async function PUT(
   req: NextRequest,
   { params }: { params: { strategy: string } }
 ) {
-  // @ts-ignore
-  const db = process.env.DB;
-  const prisma = getPrisma(db);
+  const db = getD1Database();
   const { strategy } = params;
 
   try {
     const body = await req.json();
     const { prompt, name } = body;
 
-    const template = await prisma.template.upsert({
-      where: { strategy },
-      update: { prompt, name: name || strategy },
-      create: { strategy, prompt, name: name || strategy },
-    });
+    const templateName = name || strategy;
+
+    await db
+      .prepare(
+        'INSERT INTO Template (strategy, name, prompt) VALUES (?, ?, ?) ON CONFLICT(strategy) DO UPDATE SET name = excluded.name, prompt = excluded.prompt'
+      )
+      .bind(strategy, templateName, prompt)
+      .run();
+
+    const template = await db
+      .prepare('SELECT strategy, name, prompt FROM Template WHERE strategy = ?')
+      .bind(strategy)
+      .first();
 
     return NextResponse.json({ success: true, template });
   } catch (error) {

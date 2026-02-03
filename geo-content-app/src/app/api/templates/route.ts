@@ -1,15 +1,16 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getPrisma } from '@/lib/prisma';
+import { NextResponse } from 'next/server';
+import { getD1Database } from '@/lib/cloudflare';
 
 export const runtime = 'edge';
 
 export async function GET() {
-  // @ts-ignore
-  const db = process.env.DB;
-  const prisma = getPrisma(db);
+  const db = getD1Database();
 
   try {
-    const templates = await prisma.template.findMany();
+    const result = await db
+      .prepare('SELECT strategy, name, prompt FROM Template ORDER BY strategy ASC')
+      .all();
+    const templates = result?.results ?? [];
     return NextResponse.json({ templates });
   } catch (error) {
     console.error('Fetch templates error:', error);

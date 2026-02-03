@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getPrisma } from '@/lib/prisma';
+import { getD1Database } from '@/lib/cloudflare';
 
 export const runtime = 'edge';
 
@@ -7,15 +7,18 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  // @ts-ignore
-  const db = process.env.DB;
-  const prisma = getPrisma(db);
+  const db = getD1Database();
   const { id } = params;
 
   try {
-    const deleted = await prisma.article.delete({
-      where: { id },
-    });
+    const deleted = await db
+      .prepare(
+        'SELECT id, product_name, product_price, strategy, strategy_name, content, created_at FROM Article WHERE id = ?'
+      )
+      .bind(id)
+      .first();
+
+    await db.prepare('DELETE FROM Article WHERE id = ?').bind(id).run();
 
     return NextResponse.json({ success: true, deleted });
   } catch (error) {

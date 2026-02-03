@@ -1,23 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getPrisma } from '@/lib/prisma';
+import { getD1Database } from '@/lib/cloudflare';
 
 export const runtime = 'edge';
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const strategy = searchParams.get('strategy');
-  
-  // @ts-ignore
-  const db = process.env.DB;
-  const prisma = getPrisma(db);
+  const db = getD1Database();
 
   try {
-    const articles = await prisma.article.findMany({
-      where: strategy ? { strategy } : {},
-      orderBy: { created_at: 'desc' },
-      take: 50,
-    });
+    const stmt = strategy
+      ? db
+          .prepare(
+            'SELECT id, product_name, product_price, strategy, strategy_name, content, created_at FROM Article WHERE strategy = ? ORDER BY created_at DESC LIMIT 50'
+          )
+          .bind(strategy)
+      : db.prepare(
+          'SELECT id, product_name, product_price, strategy, strategy_name, content, created_at FROM Article ORDER BY created_at DESC LIMIT 50'
+        );
 
+    const result = await stmt.all();
+    const articles = result?.results ?? [];
     return NextResponse.json({ articles, total: articles.length });
   } catch (error) {
     console.error('Fetch articles error:', error);
@@ -26,25 +29,30 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  // @ts-ignore
-  const db = process.env.DB;
-  const prisma = getPrisma(db);
+  const db = getD1Database();
 
   try {
     const body = await req.json();
     const { product_name, product_price, strategy, strategy_name, content } = body;
 
-    const newArticle = await prisma.article.create({
-      data: {
-        product_name,
-        product_price: parseFloat(product_price),
-        strategy,
-        strategy_name,
-        content,
-      },
-    });
+    const id = crypto.randomUUID();
+    const price = typeof product_price === 'number' ? product_price : parseFloat(product_price);
 
-    return NextResponse.json({ success: true, article: newArticle });
+    await db
+      .prepare(
+        'INSERT INTO Article (id, product_name, product_price, strategy, strategy_name, content, created_at) VALUES (?, ?, ?, ?, ?, ?, datetime(\'now\'))'
+      )
+      .bind(id, product_name, price, strategy, strategy_name, content)
+      .run();
+
+    const created = await db
+      .prepare(
+        'SELECT id, product_name, product_price, strategy, strategy_name, content, created_at FROM Article WHERE id = ?'
+      )
+      .bind(id)
+      .first();
+
+    return NextResponse.json({ success: true, article: created });
   } catch (error) {
     console.error('Create article error:', error);
     return NextResponse.json({ error: 'Failed to create article' }, { status: 500 });

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
+import { getCloudflareEnv } from '@/lib/cloudflare';
 
 export const runtime = 'edge';
 
@@ -27,8 +28,13 @@ const DEFAULT_COMPETITOR_INFO = `
 `;
 
 export async function POST(req: NextRequest) {
-  const apiKey = process.env.OPENAI_API_KEY || 'sk-REDACTED';
-  const baseURL = process.env.OPENAI_BASE_URL || 'http://ai-api.applesay.cn/v1';
+  const env = getCloudflareEnv();
+  const apiKey = env.OPENAI_API_KEY;
+  const baseURL = env.OPENAI_BASE_URL;
+
+  if (!apiKey) {
+    return NextResponse.json({ error: '缺少 OPENAI_API_KEY 环境变量' }, { status: 500 });
+  }
 
   const openai = new OpenAI({
     apiKey,
@@ -127,8 +133,9 @@ ${compInfo}
           strategy_name: STRATEGY_NAMES[strategy] || strategy,
           content: response.choices[0].message.content || '',
         });
-      } catch (err: any) {
-        errors.push(`${strategy}: ${err.message}`);
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        errors.push(`${strategy}: ${message}`);
       }
     }
 
@@ -137,8 +144,9 @@ ${compInfo}
       articles,
       errors: errors.length > 0 ? errors : undefined,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
     console.error('Generate error:', error);
-    return NextResponse.json({ error: 'Failed to generate content' }, { status: 500 });
+    return NextResponse.json({ error: message || 'Failed to generate content' }, { status: 500 });
   }
 }

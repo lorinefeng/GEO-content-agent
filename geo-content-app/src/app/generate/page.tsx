@@ -136,7 +136,7 @@ export default function GeneratePage() {
                                     <Empty
                                         description={
                                             <span style={{ color: 'var(--text-tertiary)' }}>
-                                                填写商品信息并选择策略后点击"生成内容"
+                                                填写商品信息并选择策略后点击“生成内容”
                                             </span>
                                         }
                                     />
