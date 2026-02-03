@@ -1,0 +1,7 @@
+<svg width="220" height="60" viewBox="0 0 220 60" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <title>NutriSKU Logo</title>
+    <text x="10" y="42" font-family="Inter, sans-serif" font-weight="500" font-size="36" fill="#334155" letter-spacing="-1">Nutri</text>
+    <text x="96" y="42" font-family="Inter, sans-serif" font-weight="800" font-size="36" fill="#0F172A" letter-spacing="-1">SKU</text>
+    <path d="M88.5 15L90 20L95 21.5L90 23L88.5 28L87 23L82 21.5L87 20L88.5 15Z" fill="#10B981"/>
+    <rect x="98" y="50" width="70" height="4" rx="2" fill="#10B981"/>
+</svg>
