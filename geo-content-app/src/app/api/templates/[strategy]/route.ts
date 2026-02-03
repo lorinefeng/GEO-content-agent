@@ -11,8 +11,13 @@ export async function PUT(
   const { strategy } = params;
 
   try {
-    const body = await req.json();
-    const { prompt, name } = body;
+    const body = (await req.json()) as { prompt?: unknown; name?: unknown };
+    const prompt = typeof body.prompt === 'string' ? body.prompt : '';
+    const name = typeof body.name === 'string' ? body.name : undefined;
+
+    if (!prompt) {
+      return NextResponse.json({ error: 'prompt 不能为空' }, { status: 400 });
+    }
 
     const templateName = name || strategy;
 
