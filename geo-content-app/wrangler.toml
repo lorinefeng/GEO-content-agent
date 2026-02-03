@@ -1,9 +1,9 @@
 name = "geo-content-app"
 compatibility_date = "2024-04-03"
 compatibility_flags = ["nodejs_compat"]
-pages_build_output_dir = ".next"
+pages_build_output_dir = ".vercel/output/static"
 
 [[d1_databases]]
 binding = "DB"
 database_name = "geo-db"
-database_id = "YOUR_D1_DATABASE_ID_HERE"
+database_id = "80f9c841-7509-42df-a42c-c7681f658b8d"
