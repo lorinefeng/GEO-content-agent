@@ -5,10 +5,14 @@ export const runtime = 'edge';
 
 export async function PUT(
   req: NextRequest,
-  { params }: { params: { strategy: string } }
+  ctx: { params: Promise<{ strategy: string }> }
 ) {
   const db = getD1Database();
-  const { strategy } = params;
+  const { strategy } = await ctx.params;
+
+  if (!strategy) {
+    return NextResponse.json({ error: '缺少 strategy' }, { status: 400 });
+  }
 
   try {
     const body = (await req.json()) as { prompt?: unknown; name?: unknown };

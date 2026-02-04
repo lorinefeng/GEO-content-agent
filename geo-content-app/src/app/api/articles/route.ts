@@ -32,11 +32,31 @@ export async function POST(req: NextRequest) {
   const db = getD1Database();
 
   try {
-    const body = await req.json();
-    const { product_name, product_price, strategy, strategy_name, content } = body;
+    const body = (await req.json()) as {
+      product_name?: unknown;
+      product_price?: unknown;
+      strategy?: unknown;
+      strategy_name?: unknown;
+      content?: unknown;
+    };
+
+    const product_name = typeof body.product_name === 'string' ? body.product_name : '';
+    const strategy = typeof body.strategy === 'string' ? body.strategy : '';
+    const strategy_name = typeof body.strategy_name === 'string' ? body.strategy_name : '';
+    const content = typeof body.content === 'string' ? body.content : '';
+    const priceRaw = body.product_price;
+    const price =
+      typeof priceRaw === 'number'
+        ? priceRaw
+        : typeof priceRaw === 'string'
+          ? parseFloat(priceRaw)
+          : NaN;
+
+    if (!product_name || !strategy || !strategy_name || !content || !Number.isFinite(price)) {
+      return NextResponse.json({ error: '参数不合法' }, { status: 400 });
+    }
 
     const id = crypto.randomUUID();
-    const price = typeof product_price === 'number' ? product_price : parseFloat(product_price);
 
     await db
       .prepare(

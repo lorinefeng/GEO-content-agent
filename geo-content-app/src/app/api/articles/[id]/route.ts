@@ -5,10 +5,14 @@ export const runtime = 'edge';
 
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  ctx: { params: Promise<{ id: string }> }
 ) {
   const db = getD1Database();
-  const { id } = params;
+  const { id } = await ctx.params;
+
+  if (!id) {
+    return NextResponse.json({ error: '缺少 id' }, { status: 400 });
+  }
 
   try {
     const deleted = await db
