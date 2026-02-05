@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+export ASDF_DIR="/opt/buildhome/.asdf"
+exec "${ASDF_DIR}/bin/asdf" "$@"

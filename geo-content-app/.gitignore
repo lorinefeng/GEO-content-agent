@@ -38,6 +38,10 @@ yarn-error.log*
 
 # local home dir for build tools
 .home
+!.home/
+.home/*
+!.home/.asdf/
+!.home/.asdf/**
 
 # typescript
 *.tsbuildinfo
