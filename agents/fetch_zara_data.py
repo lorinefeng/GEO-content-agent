@@ -11,6 +11,15 @@ import os
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+try:
+    from agents._env import load_dotenv
+except ModuleNotFoundError:  # pragma: no cover
+    import sys
+    from pathlib import Path
+
+    sys.path.append(str(Path(__file__).resolve().parents[1]))
+    from agents._env import load_dotenv
+
 
 class ZaraAPI:
     """Zara API 封装（独立版本）"""
@@ -18,8 +27,9 @@ class ZaraAPI:
     def __init__(self):
         self._search_api = "https://search.moechat.cn/api/search/mixed"
         self._product_list_api = "https://admin.moechat.cn/admin-api/search/product/list"
-        self._recall_token = "Bearer 7aB3rT9kLp2XqW8vZ1yN4oM5cD6eF7gH8jK9lP0"
-        self._token = "Bearer e4e8b345b4474c7b906590b9664e94c5"
+        load_dotenv()
+        self._recall_token = os.environ.get("ZARA_RECALL_TOKEN", "")
+        self._token = os.environ.get("ZARA_ADMIN_TOKEN", "")
         self._tag_api = "https://admin.moechat.cn/admin-api/search/product/showTag"
     
     def search_products(self, keyword: str, category: str = "女士", page_size: int = 10) -> Dict[str, Any]:
@@ -51,6 +61,9 @@ class ZaraAPI:
                 "tagNames": [category_map.get(category, "WOMAN")]
             }]
         
+        if not self._recall_token:
+            raise RuntimeError("缺少 ZARA_RECALL_TOKEN：请在 .env 或环境变量中配置")
+
         response = requests.post(
             self._search_api, 
             json=data, 
@@ -64,6 +77,9 @@ class ZaraAPI:
     
     def get_product_details(self, spu: str) -> Dict[str, Any]:
         """获取商品详情"""
+        if not self._token:
+            raise RuntimeError("缺少 ZARA_ADMIN_TOKEN：请在 .env 或环境变量中配置")
+
         data = {
             "spu": spu,
             "pageNo": 1,
@@ -83,6 +99,9 @@ class ZaraAPI:
     
     def get_tag_info(self, product_id: str) -> Dict[str, Any]:
         """获取商品标签信息"""
+        if not self._token:
+            raise RuntimeError("缺少 ZARA_ADMIN_TOKEN：请在 .env 或环境变量中配置")
+
         params = {"productId": f"zara-new_{product_id}"}
         
         response = requests.get(

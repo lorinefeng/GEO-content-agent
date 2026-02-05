@@ -79,8 +79,8 @@
 
 model = ChatOpenAI(
     model="qwen3-vl-plus",
-    api_key="sk-REDACTED",
-    base_url="http://ai-api.applesay.cn/v1",
+    api_key=os.environ["OPENAI_API_KEY"],
+    base_url=os.environ.get("OPENAI_BASE_URL"),
     temperature = 0.3
 )
 

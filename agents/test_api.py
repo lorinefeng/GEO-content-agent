@@ -3,10 +3,23 @@
 
 import requests
 import json
+import os
+
+try:
+    from agents._env import load_dotenv
+except ModuleNotFoundError:  # pragma: no cover
+    import sys
+    from pathlib import Path
+
+    sys.path.append(str(Path(__file__).resolve().parents[1]))
+    from agents._env import load_dotenv
 
 # API配置
 SEARCH_API = "https://search.moechat.cn/api/search/mixed"
-RECALL_TOKEN = "Bearer 7aB3rT9kLp2XqW8vZ1yN4oM5cD6eF7gH8jK9lP0"
+load_dotenv()
+RECALL_TOKEN = os.environ.get("ZARA_RECALL_TOKEN", "")
+if not RECALL_TOKEN:
+    raise RuntimeError("缺少 ZARA_RECALL_TOKEN：请在 .env 或环境变量中配置")
 
 # 测试搜索
 data = {

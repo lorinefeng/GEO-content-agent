@@ -2,8 +2,18 @@ from typing import Any, Dict, List, Optional
 from BrandMessage.base import BaseShopAPI
 import requests
 import pymysql
+import os
 from pymysql.cursors import DictCursor
 from auth.exceptions import BrandSearchException, BrandProductDetailException
+
+try:
+    from agents._env import load_dotenv
+except ModuleNotFoundError:  # pragma: no cover
+    import sys
+    from pathlib import Path
+
+    sys.path.append(str(Path(__file__).resolve().parent))
+    from agents._env import load_dotenv
 
 
 class ZaraShopAPI(BaseShopAPI):
@@ -15,21 +25,22 @@ class ZaraShopAPI(BaseShopAPI):
 
         Args:
         """
+        load_dotenv()
         self._search_api = "https://search.moechat.cn/api/search/mixed"
         self._product_list_api = "https://admin.moechat.cn/admin-api/search/product/list"
         # 召回 token
-        self._recall_token = "Bearer 7aB3rT9kLp2XqW8vZ1yN4oM5cD6eF7gH8jK9lP0"
+        self._recall_token = os.environ.get("ZARA_RECALL_TOKEN", "")
         # 后台 token
-        self._token = "Bearer e4e8b345b4474c7b906590b9664e94c5"
+        self._token = os.environ.get("ZARA_ADMIN_TOKEN", "")
         self._tag_api = "https://admin.moechat.cn/admin-api/search/product/showTag"
         self._update_message_api = "https://admin.moechat.cn/admin-api/search/tag/update"
         self._config = {
             "db": {
-                "host": "REDACTED_HOST",
-                "user": "memor",
-                "password": "#7Dp9@zM",
-                "port": 26462,
-                "database": "data"
+                "host": os.environ.get("ZARA_DB_HOST", ""),
+                "user": os.environ.get("ZARA_DB_USER", ""),
+                "password": os.environ.get("ZARA_DB_PASSWORD", ""),
+                "port": int(os.environ.get("ZARA_DB_PORT", "3306")),
+                "database": os.environ.get("ZARA_DB_NAME", "")
             }
         }
 
@@ -95,6 +106,13 @@ class ZaraShopAPI(BaseShopAPI):
             }]
         
         print(data)
+        if not self.recall_token:
+            raise BrandSearchException(
+                brand="zara",
+                keyword=keyword,
+                status_code=500,
+                response_text="缺少 ZARA_RECALL_TOKEN：请在 .env 或环境变量中配置"
+            )
         result = requests.post(self.search_api, json=data, headers={"Authorization": self.recall_token})
         if result.status_code == 200:
             return result.json()
@@ -123,6 +141,13 @@ class ZaraShopAPI(BaseShopAPI):
             "pageNo" : 1,
             "pageSize" : 10
         }
+        if not self.token:
+            raise BrandProductDetailException(
+                brand="zara",
+                product_id=product_id,
+                status_code=500,
+                response_text="缺少 ZARA_ADMIN_TOKEN：请在 .env 或环境变量中配置"
+            )
         result = requests.post(self.product_list_api, json=data, headers={"Authorization": self.token})
         if result.status_code == 200:
             return result.json()
@@ -141,6 +166,13 @@ class ZaraShopAPI(BaseShopAPI):
         headers = {
             "Authorization": self.token,
         }
+        if not self.token:
+            raise BrandProductDetailException(
+                brand="zara",
+                product_id=product_id,
+                status_code=500,
+                response_text="缺少 ZARA_ADMIN_TOKEN：请在 .env 或环境变量中配置"
+            )
         result = requests.get(self.tag_api, params=data, headers=headers)
         if result.status_code == 200:
             return result.json()
@@ -279,6 +311,13 @@ class ZaraShopAPI(BaseShopAPI):
             """
         
         db_config = self._config["db"]
+        if not db_config.get("host") or not db_config.get("user") or not db_config.get("password") or not db_config.get("database"):
+            raise BrandSearchException(
+                brand="zara",
+                keyword="get_top_words",
+                status_code=500,
+                response_text="缺少 Zara 数据库配置：请设置 ZARA_DB_HOST/ZARA_DB_USER/ZARA_DB_PASSWORD/ZARA_DB_NAME"
+            )
         conn = None
         try:
             # 连接数据库

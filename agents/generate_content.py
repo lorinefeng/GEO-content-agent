@@ -11,12 +11,29 @@ import os
 from datetime import datetime
 from langchain_openai import ChatOpenAI
 
+try:
+    from agents._env import load_dotenv
+except ModuleNotFoundError:  # pragma: no cover
+    import sys
+    from pathlib import Path
+
+    sys.path.append(str(Path(__file__).resolve().parents[1]))
+    from agents._env import load_dotenv
+
 
 # 使用Gemini 3 Flash模型配置
+load_dotenv()
+_api_key = os.environ.get("OPENAI_API_KEY")
+if not _api_key:
+    raise RuntimeError("缺少 OPENAI_API_KEY：请在 .env 或环境变量中配置")
+
+_base_url = os.environ.get("OPENAI_BASE_URL")
+_model_name = os.environ.get("OPENAI_MODEL", "gemini-3-flash-preview")
+
 model = ChatOpenAI(
-    model="gemini-3-flash-preview",
-    api_key="sk-REDACTED",
-    base_url="http://ai-api.applesay.cn/v1",
+    model=_model_name,
+    api_key=_api_key,
+    base_url=_base_url,
     temperature=0.3
 )
 

@@ -31,6 +31,8 @@ export async function POST(req: NextRequest) {
   const env = getCloudflareEnv();
   const apiKey = env.OPENAI_API_KEY;
   const baseURL = env.OPENAI_BASE_URL;
+  const model =
+    typeof env.OPENAI_MODEL === 'string' && env.OPENAI_MODEL ? env.OPENAI_MODEL : 'gemini-3-flash-preview';
 
   if (!apiKey) {
     return NextResponse.json({ error: '缺少 OPENAI_API_KEY 环境变量' }, { status: 500 });
@@ -142,7 +144,7 @@ ${compInfo}
         }
 
         const response = await openai.chat.completions.create({
-          model: 'gemini-3-flash-preview',
+          model,
           messages: [{ role: 'user', content: prompt }],
           temperature: 0.3,
         });
