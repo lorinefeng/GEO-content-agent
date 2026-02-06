@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getCloudflareEnv, getD1Database } from '@/lib/cloudflare';
 import { ensureDatabaseReady } from '@/lib/dbInit';
+import { getBootstrapAdminConfig } from '@/lib/authDb';
 
 export const runtime = 'edge';
 
@@ -16,6 +17,9 @@ export async function GET() {
     | { Article: boolean; Template: boolean; TemplateRevision: boolean; User: boolean; RegistrationRequest: boolean }
     | undefined;
   let d1Error: string | undefined;
+  let authBootstrap: { username: string; forceReset: boolean } | undefined;
+  let authAdmin: { exists: boolean; role: string | null; status: string | null } | undefined;
+  let deployment: { commitSha: string | null; branch: string | null; url: string | null } | undefined;
 
   try {
     const db = await ensureDatabaseReady(getD1Database());
@@ -32,6 +36,24 @@ export async function GET() {
       User: names.has('User'),
       RegistrationRequest: names.has('RegistrationRequest'),
     };
+
+    const bootstrap = getBootstrapAdminConfig();
+    authBootstrap = { username: bootstrap.username, forceReset: bootstrap.forceReset };
+    const adminRow = (await db
+      .prepare('SELECT role, status FROM User WHERE username = ? LIMIT 1')
+      .bind(bootstrap.username)
+      .first()) as { role?: unknown; status?: unknown } | null;
+    authAdmin = {
+      exists: Boolean(adminRow),
+      role: typeof adminRow?.role === 'string' ? adminRow.role : null,
+      status: typeof adminRow?.status === 'string' ? adminRow.status : null,
+    };
+
+    deployment = {
+      commitSha: typeof env.CF_PAGES_COMMIT_SHA === 'string' ? env.CF_PAGES_COMMIT_SHA : null,
+      branch: typeof env.CF_PAGES_BRANCH === 'string' ? env.CF_PAGES_BRANCH : null,
+      url: typeof env.CF_PAGES_URL === 'string' ? env.CF_PAGES_URL : null,
+    };
   } catch (err: unknown) {
     d1Bound = false;
     d1Error = err instanceof Error ? err.message : String(err);
@@ -39,6 +61,7 @@ export async function GET() {
 
   return NextResponse.json({
     ok: true,
+    deployment: deployment ?? null,
     env: {
       OPENAI_API_KEY: hasOpenAIKey,
       OPENAI_BASE_URL: hasOpenAIBaseUrl,
@@ -48,6 +71,10 @@ export async function GET() {
       bound: d1Bound,
       tables: d1Tables ?? null,
       error: d1Error ?? null,
+    },
+    auth: {
+      bootstrap: authBootstrap ?? null,
+      admin: authAdmin ?? null,
     },
   });
 }
