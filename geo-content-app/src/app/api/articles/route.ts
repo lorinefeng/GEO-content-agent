@@ -1,12 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getD1Database } from '@/lib/cloudflare';
+import { ensureDatabaseReady } from '@/lib/dbInit';
+import { getActiveUser, unauthorized } from '@/lib/apiAuth';
 
 export const runtime = 'edge';
 
 export async function GET(req: NextRequest) {
+  const user = await getActiveUser(req);
+  if (!user) return unauthorized();
+
   const { searchParams } = new URL(req.url);
   const strategy = searchParams.get('strategy');
-  const db = getD1Database();
+  const db = await ensureDatabaseReady(getD1Database());
 
   try {
     const stmt = strategy
@@ -29,7 +34,10 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const db = getD1Database();
+  const user = await getActiveUser(req);
+  if (!user) return unauthorized();
+
+  const db = await ensureDatabaseReady(getD1Database());
 
   try {
     const body = (await req.json()) as {

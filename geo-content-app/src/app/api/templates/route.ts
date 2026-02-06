@@ -1,10 +1,14 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getD1Database } from '@/lib/cloudflare';
+import { ensureDatabaseReady } from '@/lib/dbInit';
+import { getActiveUser, unauthorized } from '@/lib/apiAuth';
 
 export const runtime = 'edge';
 
-export async function GET() {
-  const db = getD1Database();
+export async function GET(req: NextRequest) {
+  const user = await getActiveUser(req);
+  if (!user) return unauthorized();
+  const db = await ensureDatabaseReady(getD1Database());
 
   try {
     const result = await db

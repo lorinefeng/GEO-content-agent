@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Row, Col, Typography, Button, Input, message, Spin, Empty } from 'antd';
+import { Row, Col, Typography, Button, Input, message, Spin, Empty, Table, Space, Popconfirm } from 'antd';
 import { SaveOutlined, ReloadOutlined } from '@ant-design/icons';
 import axios from 'axios';
+import { useRequireAuth } from '@/lib/useRequireAuth';
 
 const { Text, Paragraph } = Typography;
 
@@ -11,6 +12,12 @@ interface Template {
     strategy: string;
     name: string;
     prompt: string;
+}
+
+interface TemplateRevision {
+    id: string;
+    changed_at: string;
+    changed_by?: string | null;
 }
 
 const API_BASE = '/api';
@@ -23,12 +30,15 @@ const strategyList = [
 ];
 
 export default function TemplatesPage() {
+    const { loading: authLoading } = useRequireAuth();
     const [templates, setTemplates] = useState<Template[]>([]);
     const [selectedStrategy, setSelectedStrategy] = useState('comparison');
     const [editedPrompt, setEditedPrompt] = useState('');
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [hasChanges, setHasChanges] = useState(false);
+    const [revisions, setRevisions] = useState<TemplateRevision[]>([]);
+    const [loadingRevisions, setLoadingRevisions] = useState(false);
 
     const fetchTemplates = async () => {
         setLoading(true);
@@ -47,12 +57,25 @@ export default function TemplatesPage() {
         fetchTemplates();
     }, []);
 
+    const fetchRevisions = async (strategy: string) => {
+        setLoadingRevisions(true);
+        try {
+            const response = await axios.get(`${API_BASE}/templates/${strategy}/revisions`);
+            setRevisions(response.data.revisions || []);
+        } catch {
+            setRevisions([]);
+        } finally {
+            setLoadingRevisions(false);
+        }
+    };
+
     useEffect(() => {
         const template = templates.find((t) => t.strategy === selectedStrategy);
         if (template) {
             setEditedPrompt(template.prompt);
             setHasChanges(false);
         }
+        fetchRevisions(selectedStrategy);
     }, [selectedStrategy, templates]);
 
     const handleSave = async () => {
@@ -64,6 +87,7 @@ export default function TemplatesPage() {
             message.success('模板保存成功');
             setHasChanges(false);
             fetchTemplates();
+            fetchRevisions(selectedStrategy);
         } catch {
             message.error('保存失败');
         } finally {
@@ -71,7 +95,31 @@ export default function TemplatesPage() {
         }
     };
 
+    const handleRollback = async (revisionId: string) => {
+        setSaving(true);
+        try {
+            await axios.post(`${API_BASE}/templates/${selectedStrategy}/rollback`, { revision_id: revisionId });
+            message.success('已回滚');
+            setHasChanges(false);
+            await fetchTemplates();
+            await fetchRevisions(selectedStrategy);
+        } catch {
+            message.error('回滚失败');
+        } finally {
+            setSaving(false);
+        }
+    };
+
     const currentTemplate = templates.find((t) => t.strategy === selectedStrategy);
+
+    if (authLoading) {
+        return (
+            <div style={{ padding: 80, textAlign: 'center' }}>
+                <Spin size="large" />
+                <Paragraph style={{ color: 'var(--text-secondary)', marginTop: 16 }}>正在校验登录状态...</Paragraph>
+            </div>
+        );
+    }
 
     return (
         <div style={{ maxWidth: 1200, margin: '0 auto' }}>
@@ -211,6 +259,50 @@ export default function TemplatesPage() {
                                             border: '1px solid var(--border-primary)',
                                         }}
                                     />
+
+                                    <div style={{ marginTop: 16 }}>
+                                        <Text strong style={{ color: 'var(--text-primary)' }}>
+                                            模板变更记录
+                                        </Text>
+                                        <div style={{ marginTop: 10 }}>
+                                            <Table
+                                                size="small"
+                                                rowKey="id"
+                                                loading={loadingRevisions}
+                                                dataSource={revisions}
+                                                pagination={{ pageSize: 8 }}
+                                                columns={[
+                                                    {
+                                                        title: '变更时间',
+                                                        dataIndex: 'changed_at',
+                                                        key: 'changed_at',
+                                                        render: (v: string) => (
+                                                            <Text style={{ color: 'var(--text-secondary)', fontSize: 13 }}>
+                                                                {new Date(v).toLocaleString('zh-CN')}
+                                                            </Text>
+                                                        ),
+                                                    },
+                                                    {
+                                                        title: '操作',
+                                                        key: 'action',
+                                                        width: 110,
+                                                        render: (_: unknown, record: TemplateRevision) => (
+                                                            <Space>
+                                                                <Popconfirm
+                                                                    title="确认回滚到该版本？"
+                                                                    okText="回滚"
+                                                                    cancelText="取消"
+                                                                    onConfirm={() => handleRollback(record.id)}
+                                                                >
+                                                                    <Button size="small">回滚</Button>
+                                                                </Popconfirm>
+                                                            </Space>
+                                                        ),
+                                                    },
+                                                ]}
+                                            />
+                                        </div>
+                                    </div>
                                 </>
                             ) : (
                                 <Empty description="请选择一个策略" />

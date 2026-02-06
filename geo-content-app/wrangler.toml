@@ -1,6 +1,6 @@
 name = "geo-content-app"
 compatibility_date = "2024-04-03"
-compatibility_flags = ["nodejs_compat"]
+compatibility_flags = ["nodejs_compat_v2"]
 pages_build_output_dir = ".vercel/output/static"
 
 [[d1_databases]]

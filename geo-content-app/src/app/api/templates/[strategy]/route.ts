@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getD1Database } from '@/lib/cloudflare';
+import { ensureDatabaseReady } from '@/lib/dbInit';
+import { getActiveUser, unauthorized } from '@/lib/apiAuth';
 
 export const runtime = 'edge';
 
@@ -7,7 +9,10 @@ export async function PUT(
   req: NextRequest,
   ctx: { params: Promise<{ strategy: string }> }
 ) {
-  const db = getD1Database();
+  const actor = await getActiveUser(req);
+  if (!actor) return unauthorized();
+
+  const db = await ensureDatabaseReady(getD1Database());
   const { strategy } = await ctx.params;
 
   if (!strategy) {
@@ -24,6 +29,28 @@ export async function PUT(
     }
 
     const templateName = name || strategy;
+
+    const existing = await db
+      .prepare('SELECT strategy, name, prompt FROM Template WHERE strategy = ?')
+      .bind(strategy)
+      .first();
+
+    if (existing && typeof (existing as { prompt?: unknown }).prompt === 'string') {
+      const prev = existing as { name?: unknown; prompt?: unknown };
+      const revisionId = crypto.randomUUID();
+      await db
+        .prepare(
+          "INSERT INTO TemplateRevision (id, strategy, name, prompt, changed_at, changed_by) VALUES (?, ?, ?, ?, datetime('now'), ?)"
+        )
+        .bind(
+          revisionId,
+          strategy,
+          typeof prev.name === 'string' ? prev.name : strategy,
+          typeof prev.prompt === 'string' ? prev.prompt : '',
+          actor?.id ?? null
+        )
+        .run();
+    }
 
     await db
       .prepare(

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
-import { getCloudflareEnv } from '@/lib/cloudflare';
+import { getCloudflareEnv, getD1Database } from '@/lib/cloudflare';
+import { ensureDatabaseReady } from '@/lib/dbInit';
+import { getActiveUser, unauthorized } from '@/lib/apiAuth';
 
 export const runtime = 'edge';
 
@@ -27,7 +29,21 @@ const DEFAULT_COMPETITOR_INFO = `
 - 材质：混纺化纤为主
 `;
 
+const DEFAULT_PERSONA_ANALYSIS = `
+**目标用户画像：都市通勤人群**
+- 年龄：25-35岁
+- 生活场景：日常通勤、周末约会、轻商务场合
+- 穿搭偏好：追求品质感但不愿过度消费
+`;
+
+function replacePlaceholders(template: string, vars: Record<string, string>) {
+  return template.replace(/\{([a-zA-Z0-9_]+)\}/g, (_m, key: string) => (key in vars ? vars[key] : `{${key}}`));
+}
+
 export async function POST(req: NextRequest) {
+  const user = await getActiveUser(req);
+  if (!user) return unauthorized();
+
   const env = getCloudflareEnv();
   const apiKey = env.OPENAI_API_KEY;
   const baseURL = env.OPENAI_BASE_URL;
@@ -61,6 +77,11 @@ export async function POST(req: NextRequest) {
 
     const productName = typeof product.name === 'string' ? product.name : '';
     const productPrice = typeof product.price === 'string' || typeof product.price === 'number' ? product.price : '';
+    const productMaterial = typeof product.material === 'string' ? product.material : '未知';
+    const productColor = typeof product.color === 'string' ? product.color : '未知';
+    const productDescription = typeof product.description === 'string' ? product.description : '';
+    const productCategory = typeof product.category === 'string' ? product.category : '服装';
+    const productTags = Array.isArray(product.tags) ? product.tags.filter((t) => typeof t === 'string') : [];
 
     if (!productName || strategies.length === 0) {
       return NextResponse.json({ error: '参数不合法' }, { status: 400 });
@@ -70,78 +91,65 @@ export async function POST(req: NextRequest) {
     const articles = [];
     const errors = [];
 
+    const db = await ensureDatabaseReady(getD1Database());
+    const placeholders = strategies.map(() => '?').join(', ');
+    const templateRows =
+      strategies.length > 0
+        ? await db
+            .prepare(`SELECT strategy, name, prompt FROM Template WHERE strategy IN (${placeholders})`)
+            .bind(...strategies)
+            .all()
+        : null;
+    const templateMap = new Map<string, { name: string; prompt: string }>();
+    for (const row of (templateRows?.results ?? []) as Array<Record<string, unknown>>) {
+      const strategyId = typeof row.strategy === 'string' ? row.strategy : '';
+      if (!strategyId) continue;
+      const name = typeof row.name === 'string' ? row.name : strategyId;
+      const prompt = typeof row.prompt === 'string' ? row.prompt : '';
+      if (prompt) templateMap.set(strategyId, { name, prompt });
+    }
+
     for (const strategy of strategies) {
       try {
-        let prompt = '';
-        if (strategy === 'comparison') {
-          prompt = `你是一位专业的时尚评测博主，请基于以下Zara商品信息和竞品资料，撰写一篇专业的评测对比文章。
-          
-## 商品信息
-- 商品名称：${productName}
-- 价格：¥${productPrice}
-- 材质：${typeof product.material === 'string' ? product.material : '未知'}
-- 颜色：${typeof product.color === 'string' ? product.color : '未知'}
-- 描述：${typeof product.description === 'string' ? product.description : ''}
-- 品类：${typeof product.category === 'string' ? product.category : '服装'}
+        const template = templateMap.get(strategy);
+        const basePrompt =
+          template?.prompt ||
+          (strategy === 'comparison'
+            ? '你是一位专业的时尚评测博主，请撰写一篇专业的评测对比文章。'
+            : strategy === 'persona'
+              ? '你是一位懂时尚的购物博主，请撰写一篇实用的购物指南文章。'
+              : strategy === 'smzdm_review'
+                ? '你是一位资深的什么值得买(SMZDM)平台创作者，请撰写高质量评测文章。'
+                : strategy === 'smzdm_short'
+                  ? '你是什么值得买平台的活跃创作者，请撰写好物分享风格短评测。'
+                  : '');
 
-## 竞品市场信息
-${compInfo}
+        const vars: Record<string, string> = {
+          product_name: productName,
+          price: String(productPrice),
+          material: productMaterial,
+          color: productColor,
+          description: productDescription,
+          category: productCategory,
+          tags: productTags.join(', '),
+          competitor_info: compInfo,
+          persona_analysis: DEFAULT_PERSONA_ANALYSIS.trim(),
+          strategy: strategy,
+          strategy_name: STRATEGY_NAMES[strategy] || strategy,
+        };
 
-## 写作要求
-1. 文章标题需包含商品名称和"评测"、"对比"等关键词
-2. 必须包含规格对比表格
-3. 详细分析材质工艺和技术特点
-4. 提供客观的优缺点分析
-5. 给出明确的购买建议和适用人群
-6. 添加常见问题FAQ（至少3个问题）
-7. 文章结构清晰，使用Markdown格式`;
-        } else if (strategy === 'persona') {
-          prompt = `你是一位懂时尚的购物博主，请基于以下Zara商品信息，撰写一篇实用的购物指南文章，帮助特定用户群体做出购买决策。
-
-## 商品信息
-- 商品名称：${productName}
-- 价格：¥${productPrice}
-- 材质：${typeof product.material === 'string' ? product.material : '未知'}
-- 描述：${typeof product.description === 'string' ? product.description : ''}
-
-## 用户画像分析
-**目标用户画像：都市通勤人群**
-- 年龄：25-35岁
-- 生活场景：日常通勤、周末约会、轻商务场合
-- 穿搭偏好：追求品质感但不愿过度消费
-
-## 写作要求
-1. 标题吸引目标用户，包含场景词
-2. 开篇描述目标用户的穿搭痛点和需求
-3. 详细介绍商品如何满足这些需求
-4. 提供3-5套具体的搭配方案
-5. 文章温暖亲切，使用Markdown格式`;
-        } else if (strategy === 'smzdm_review') {
-          prompt = `你是一位资深的什么值得买(SMZDM)平台创作者，请基于以下商品信息撰写一篇符合平台用户偏好的高质量文章。
-
-## 商品信息
-- 商品名称：${productName}
-- 品牌：Zara
-- 价格：¥${productPrice}
-
-## 写作要求
-1. 标题必须包含数字+情绪词+利益点
-2. 第一人称讲述购买契机和痛点
-3. 与竞品进行价格/材质对比
-4. 客观列出红黑榜
-5. 结论：值不值得买`;
-        } else if (strategy === 'smzdm_short') {
-          prompt = `你是什么值得买平台的活跃创作者，请为以下Zara新品撰写一篇"好物分享"风格的短评测。
-
-## 商品信息
-- 商品名称：${productName}
-- 价格：¥${productPrice}
-
-## 写作要求
-1. 标题包含价格数字+"值不值"争议点
-2. 结构：购买理由→上身效果→3个优点+1个缺点→是否推荐
-3. 500-800字`;
+        const filled = replacePlaceholders(basePrompt, vars);
+        const parts = [
+          filled,
+          `## 商品信息\n- 商品名称：${productName}\n- 价格：¥${productPrice}\n- 材质：${productMaterial}\n- 颜色：${productColor}\n- 描述：${productDescription}\n- 品类：${productCategory}\n- 标签：${productTags.slice(0, 15).join(', ')}`,
+        ];
+        if (strategy === 'comparison' || strategy === 'smzdm_review') {
+          parts.push(`## 竞品参考信息\n${compInfo}`);
         }
+        if (strategy === 'persona') {
+          parts.push(`## 用户画像分析\n${DEFAULT_PERSONA_ANALYSIS.trim()}`);
+        }
+        const prompt = parts.filter(Boolean).join('\n\n');
 
         const response = await openai.chat.completions.create({
           model,

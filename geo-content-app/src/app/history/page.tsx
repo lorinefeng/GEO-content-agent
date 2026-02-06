@@ -1,10 +1,11 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Table, Tag, Button, Modal, Empty, Space, Typography, Input, Select, message, Popconfirm } from 'antd';
+import { Table, Tag, Button, Modal, Empty, Space, Typography, Input, Select, message, Popconfirm, Spin } from 'antd';
 import { EyeOutlined, DeleteOutlined, SearchOutlined, CopyOutlined } from '@ant-design/icons';
 import MarkdownPreview from '@/components/MarkdownPreview';
 import axios from 'axios';
+import { useRequireAuth } from '@/lib/useRequireAuth';
 
 const { Text } = Typography;
 
@@ -21,6 +22,7 @@ interface Article {
 const API_BASE = '/api';
 
 export default function HistoryPage() {
+    const { loading: authLoading } = useRequireAuth();
     const [articles, setArticles] = useState<Article[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedArticle, setSelectedArticle] = useState<Article | null>(null);
@@ -30,7 +32,7 @@ export default function HistoryPage() {
 
     const fetchArticles = async () => {
         try {
-            const response = await axios.get(`${API_BASE}/api/articles`, {
+            const response = await axios.get(`${API_BASE}/articles`, {
                 params: { strategy: filterStrategy || undefined },
             });
             setArticles(response.data.articles || []);
@@ -45,6 +47,15 @@ export default function HistoryPage() {
     useEffect(() => {
         fetchArticles();
     }, [filterStrategy]);
+
+    if (authLoading) {
+        return (
+            <div style={{ padding: 80, textAlign: 'center' }}>
+                <Spin size="large" />
+                <div style={{ color: 'var(--text-secondary)', marginTop: 16 }}>正在校验登录状态...</div>
+            </div>
+        );
+    }
 
     const handleDelete = async (id: string) => {
         try {

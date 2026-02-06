@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getCloudflareEnv, getD1Database } from '@/lib/cloudflare';
+import { ensureDatabaseReady } from '@/lib/dbInit';
 
 export const runtime = 'edge';
 
@@ -11,20 +12,25 @@ export async function GET() {
   const openAIModel = typeof env.OPENAI_MODEL === 'string' && env.OPENAI_MODEL ? env.OPENAI_MODEL : undefined;
 
   let d1Bound = true;
-  let d1Tables: { Article: boolean; Template: boolean } | undefined;
+  let d1Tables:
+    | { Article: boolean; Template: boolean; TemplateRevision: boolean; User: boolean; RegistrationRequest: boolean }
+    | undefined;
   let d1Error: string | undefined;
 
   try {
-    const db = getD1Database();
+    const db = await ensureDatabaseReady(getD1Database());
     const rows = await db
       .prepare(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('Article','Template')"
+        "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('Article','Template','TemplateRevision','User','RegistrationRequest')"
       )
       .all();
     const names = new Set((rows?.results ?? []).map((r) => (r as { name?: unknown }).name).filter((n): n is string => typeof n === 'string'));
     d1Tables = {
       Article: names.has('Article'),
       Template: names.has('Template'),
+      TemplateRevision: names.has('TemplateRevision'),
+      User: names.has('User'),
+      RegistrationRequest: names.has('RegistrationRequest'),
     };
   } catch (err: unknown) {
     d1Bound = false;
@@ -45,4 +51,3 @@ export async function GET() {
     },
   });
 }
-

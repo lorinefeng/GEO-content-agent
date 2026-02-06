@@ -6,6 +6,7 @@ import ProductForm, { ProductInfo } from '@/components/ProductForm';
 import StrategySelector from '@/components/StrategySelector';
 import MarkdownPreview from '@/components/MarkdownPreview';
 import axios from 'axios';
+import { useRequireAuth } from '@/lib/useRequireAuth';
 
 const { Title, Paragraph, Text } = Typography;
 
@@ -18,10 +19,20 @@ interface ArticleResult {
 const API_BASE = '/api';
 
 export default function GeneratePage() {
+    const { loading: authLoading } = useRequireAuth();
     const [selectedStrategies, setSelectedStrategies] = useState<string[]>([]);
     const [loading, setLoading] = useState(false);
     const [articles, setArticles] = useState<ArticleResult[]>([]);
     const [errors, setErrors] = useState<string[]>([]);
+
+    if (authLoading) {
+        return (
+            <div style={{ padding: 80, textAlign: 'center' }}>
+                <Spin size="large" />
+                <Paragraph style={{ color: 'var(--text-secondary)', marginTop: 16 }}>正在校验登录状态...</Paragraph>
+            </div>
+        );
+    }
 
     const handleGenerate = async (product: ProductInfo) => {
         if (selectedStrategies.length === 0) {
@@ -39,28 +50,42 @@ export default function GeneratePage() {
                 strategies: selectedStrategies,
             });
 
-            if (response.data.success) {
-                setArticles(response.data.articles);
-                message.success(`成功生成 ${response.data.articles.length} 篇内容`);
+            const generatedArticles: ArticleResult[] = Array.isArray(response.data.articles) ? response.data.articles : [];
+            const generateErrors: string[] = Array.isArray(response.data.errors) ? response.data.errors : [];
 
-                // 保存到历史
-                for (const article of response.data.articles) {
-                    await axios.post(`${API_BASE}/articles`, {
-                        product_name: product.name,
-                        product_price: product.price,
-                        strategy: article.strategy,
-                        strategy_name: article.strategy_name,
-                        content: article.content,
-                    });
+            if (generatedArticles.length > 0) {
+                setArticles(generatedArticles);
+                message.success(`成功生成 ${generatedArticles.length} 篇内容`);
+
+                const saveResults = await Promise.allSettled(
+                    generatedArticles.map((article) =>
+                        axios.post(`${API_BASE}/articles`, {
+                            product_name: product.name,
+                            product_price: product.price,
+                            strategy: article.strategy,
+                            strategy_name: article.strategy_name,
+                            content: article.content,
+                        })
+                    )
+                );
+
+                const failedCount = saveResults.filter((r) => r.status === 'rejected').length;
+                if (failedCount > 0) {
+                    message.warning(`内容已生成，但有 ${failedCount} 篇保存历史失败`);
                 }
             }
 
-            if (response.data.errors?.length > 0) {
-                setErrors(response.data.errors);
+            if (generateErrors.length > 0) {
+                setErrors(generateErrors);
             }
         } catch (error) {
             console.error('生成失败:', error);
-            message.error('生成失败，请检查后端服务');
+            const axiosError = error as { response?: { status?: number; data?: unknown } };
+            const status = axiosError?.response?.status;
+            const data = axiosError?.response?.data as { error?: unknown } | undefined;
+            const serverMessage = data && typeof data.error === 'string' ? data.error : '';
+            const statusText = typeof status === 'number' ? `（HTTP ${status}）` : '';
+            message.error(serverMessage ? `${serverMessage}${statusText}` : `生成失败，请检查后端服务${statusText}`);
         } finally {
             setLoading(false);
         }

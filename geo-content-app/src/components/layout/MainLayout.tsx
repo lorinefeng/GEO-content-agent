@@ -7,12 +7,14 @@ import {
     EditOutlined,
     HistoryOutlined,
     SettingOutlined,
+    UserOutlined,
     SunOutlined,
     MoonOutlined,
 } from '@ant-design/icons';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useTheme } from '@/components/ThemeProvider';
+import axios from 'axios';
 
 const { Header, Content, Sider } = Layout;
 
@@ -22,7 +24,35 @@ interface MainLayoutProps {
 
 export default function MainLayout({ children }: MainLayoutProps) {
     const pathname = usePathname();
+    const router = useRouter();
     const { theme, toggleTheme } = useTheme();
+    const [user, setUser] = React.useState<{ id: string; username: string; role: 'admin' | 'user' } | null>(null);
+
+    React.useEffect(() => {
+        let mounted = true;
+        axios
+            .get('/api/auth/me')
+            .then((res) => {
+                if (!mounted) return;
+                setUser(res.data.user || null);
+            })
+            .catch(() => {
+                if (!mounted) return;
+                setUser(null);
+            });
+        return () => {
+            mounted = false;
+        };
+    }, []);
+
+    const handleLogout = async () => {
+        try {
+            await axios.post('/api/auth/logout');
+        } finally {
+            setUser(null);
+            router.replace('/login');
+        }
+    };
 
     const menuItems = [
         {
@@ -45,6 +75,15 @@ export default function MainLayout({ children }: MainLayoutProps) {
             icon: <SettingOutlined />,
             label: <Link href="/templates">模板管理</Link>,
         },
+        ...(user?.role === 'admin'
+            ? [
+                  {
+                      key: '/admin',
+                      icon: <UserOutlined />,
+                      label: <Link href="/admin">账号审批</Link>,
+                  },
+              ]
+            : []),
     ];
 
     const pageTitles: Record<string, string> = {
@@ -52,6 +91,8 @@ export default function MainLayout({ children }: MainLayoutProps) {
         '/generate': '创建内容',
         '/history': '历史记录',
         '/templates': '模板配置',
+        '/admin': '账号审批',
+        '/login': '登录',
     };
 
     return (
@@ -173,6 +214,21 @@ export default function MainLayout({ children }: MainLayoutProps) {
                         </div>
 
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            {user && (
+                                <Tooltip title={`当前账号：${user.username}`}>
+                                    <Button
+                                        type="text"
+                                        style={{
+                                            color: 'var(--text-secondary)',
+                                            height: 36,
+                                            paddingInline: 10,
+                                        }}
+                                        onClick={handleLogout}
+                                    >
+                                        退出
+                                    </Button>
+                                </Tooltip>
+                            )}
                             <Tooltip title={theme === 'dark' ? '切换浅色模式' : '切换深色模式'}>
                                 <Button
                                     type="text"

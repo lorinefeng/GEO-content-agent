@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getD1Database } from '@/lib/cloudflare';
+import { ensureDatabaseReady } from '@/lib/dbInit';
+import { getActiveUser, unauthorized } from '@/lib/apiAuth';
 
 export const runtime = 'edge';
 
@@ -7,7 +9,10 @@ export async function DELETE(
   req: NextRequest,
   ctx: { params: Promise<{ id: string }> }
 ) {
-  const db = getD1Database();
+  const user = await getActiveUser(req);
+  if (!user) return unauthorized();
+
+  const db = await ensureDatabaseReady(getD1Database());
   const { id } = await ctx.params;
 
   if (!id) {
