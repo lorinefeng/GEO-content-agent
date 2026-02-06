@@ -1,4 +1,4 @@
-import { getD1Database } from '@/lib/cloudflare';
+import { getCloudflareEnv, getD1Database } from '@/lib/cloudflare';
 import { hashPassword, verifyPassword } from '@/lib/auth';
 import type { D1Database } from '@cloudflare/workers-types';
 import { ensureDatabaseReady } from '@/lib/dbInit';
@@ -27,28 +27,94 @@ export type RegistrationRequestRow = {
 const DEFAULT_ADMIN_USERNAME = 'karpsie';
 const DEFAULT_ADMIN_PASSWORD = 'Feng3384832740';
 
+export type BootstrapAdminConfig = {
+  username: string;
+  password: string;
+  forceReset: boolean;
+};
+
+export function getBootstrapAdminConfig(): BootstrapAdminConfig {
+  const env = getCloudflareEnv();
+  const username =
+    typeof env.ADMIN_USERNAME === 'string' && env.ADMIN_USERNAME.trim()
+      ? env.ADMIN_USERNAME.trim()
+      : DEFAULT_ADMIN_USERNAME;
+  const password = typeof env.ADMIN_PASSWORD === 'string' && env.ADMIN_PASSWORD ? env.ADMIN_PASSWORD : DEFAULT_ADMIN_PASSWORD;
+  const forceReset =
+    env.ADMIN_FORCE_RESET === '1' ||
+    env.ADMIN_FORCE_RESET === 'true' ||
+    env.ADMIN_FORCE_RESET === 'yes';
+  return { username, password, forceReset };
+}
+
 export async function ensureAuthTables() {
   const db = getD1Database();
   return ensureDatabaseReady(db);
 }
 
 export async function ensureDefaultAdmin(db: D1Database) {
+  const { username, password } = getBootstrapAdminConfig();
+
   const existing = (await db
-    .prepare('SELECT id, username, password_hash, role, status, created_at FROM User WHERE role = ? LIMIT 1')
-    .bind('admin')
+    .prepare('SELECT id, username, password_hash, role, status, created_at FROM User WHERE username = ? LIMIT 1')
+    .bind(username)
     .first()) as UserRow | null;
 
-  if (existing) return existing;
+  if (existing) {
+    if (existing.role !== 'admin' || existing.status !== 'active') {
+      await db
+        .prepare("UPDATE User SET role='admin', status='active' WHERE id = ?")
+        .bind(existing.id)
+        .run();
+    }
+    return existing;
+  }
 
   const id = crypto.randomUUID();
-  const password_hash = await hashPassword(DEFAULT_ADMIN_PASSWORD);
+  const password_hash = await hashPassword(password);
   await db
     .prepare(
-      "INSERT INTO User (id, username, password_hash, role, status, created_at) VALUES (?, ?, ?, ?, 'active', datetime('now'))"
+      "INSERT INTO User (id, username, password_hash, role, status, created_at) VALUES (?, ?, ?, 'admin', 'active', datetime('now'))"
     )
-    .bind(id, DEFAULT_ADMIN_USERNAME, password_hash, 'admin')
+    .bind(id, username, password_hash)
     .run();
 
+  const created = (await db
+    .prepare('SELECT id, username, password_hash, role, status, created_at FROM User WHERE id = ?')
+    .bind(id)
+    .first()) as UserRow | null;
+  if (!created) throw new Error('创建管理员失败');
+  return created;
+}
+
+export async function upsertActiveAdminUser(db: D1Database, username: string, password: string) {
+  const existing = (await db
+    .prepare('SELECT id FROM User WHERE username = ? LIMIT 1')
+    .bind(username)
+    .first()) as { id?: unknown } | null;
+
+  const password_hash = await hashPassword(password);
+
+  if (existing?.id && typeof existing.id === 'string') {
+    await db
+      .prepare("UPDATE User SET password_hash = ?, role = 'admin', status = 'active' WHERE id = ?")
+      .bind(password_hash, existing.id)
+      .run();
+    const updated = (await db
+      .prepare('SELECT id, username, password_hash, role, status, created_at FROM User WHERE id = ?')
+      .bind(existing.id)
+      .first()) as UserRow | null;
+    if (!updated) throw new Error('更新管理员失败');
+    return updated;
+  }
+
+  const id = crypto.randomUUID();
+  await db
+    .prepare(
+      "INSERT INTO User (id, username, password_hash, role, status, created_at) VALUES (?, ?, ?, 'admin', 'active', datetime('now'))"
+    )
+    .bind(id, username, password_hash)
+    .run();
   const created = (await db
     .prepare('SELECT id, username, password_hash, role, status, created_at FROM User WHERE id = ?')
     .bind(id)

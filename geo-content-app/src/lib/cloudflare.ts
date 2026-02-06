@@ -5,6 +5,9 @@ export type CloudflareEnv = Record<string, unknown>;
 
 export interface CloudflareEnvBindings extends CloudflareEnv {
   DB?: D1Database;
+  ADMIN_USERNAME?: string;
+  ADMIN_PASSWORD?: string;
+  ADMIN_FORCE_RESET?: string;
   OPENAI_API_KEY?: string;
   OPENAI_BASE_URL?: string;
   OPENAI_MODEL?: string;

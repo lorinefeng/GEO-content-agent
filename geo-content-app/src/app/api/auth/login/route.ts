@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { buildSetCookie, signSessionToken } from '@/lib/auth';
-import { ensureAuthTables, ensureDefaultAdmin, verifyUserPassword } from '@/lib/authDb';
+import {
+  ensureAuthTables,
+  ensureDefaultAdmin,
+  getBootstrapAdminConfig,
+  upsertActiveAdminUser,
+  verifyUserPassword,
+} from '@/lib/authDb';
 
 export const runtime = 'edge';
 
@@ -18,7 +24,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: '用户名或密码不能为空' }, { status: 400 });
   }
 
-  const user = await verifyUserPassword(db, username, password);
+  let user = await verifyUserPassword(db, username, password);
+  const bootstrap = getBootstrapAdminConfig();
+  if (
+    (!user || bootstrap.forceReset) &&
+    username === bootstrap.username &&
+    password === bootstrap.password &&
+    bootstrap.username &&
+    bootstrap.password
+  ) {
+    user = await upsertActiveAdminUser(db, bootstrap.username, bootstrap.password);
+  }
   if (!user) {
     return NextResponse.json({ error: '用户名或密码错误，或账号未获批准' }, { status: 401 });
   }
@@ -37,4 +53,3 @@ export async function POST(req: NextRequest) {
   res.headers.append('Set-Cookie', buildSetCookie(COOKIE_NAME, token, { maxAgeSeconds: 60 * 60 * 24 * 7, secure }));
   return res;
 }
-
