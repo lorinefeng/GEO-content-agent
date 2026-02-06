@@ -33,7 +33,7 @@
 
 ## Node.js 兼容开关
 
-如果页面提供 “Node.js compatibility / nodejs_compat” 的开关，建议开启（本项目 `wrangler.toml` 已声明 `compatibility_flags = ["nodejs_compat"]`）。
+如果页面提供 “Node.js compatibility / nodejs_compat” 的开关，建议开启（本项目 `wrangler.toml` 已声明 `compatibility_flags = ["nodejs_compat_v2"]`，用于兼容 `async_hooks` / `AsyncLocalStorage`）。
 
 ## 常见报错与原因
 
@@ -54,3 +54,7 @@ Pages Git 集成部署不需要 `wrangler deploy`。如果你之前在 “Deploy
 - `/api/health`
 
 会返回 D1 绑定/表是否存在，以及 OpenAI 相关变量是否已配置（只返回布尔值，不会泄露密钥）。
+
+另外它也会返回 `deployment.commitSha`（来自 `CF_PAGES_COMMIT_SHA`），用来确认你线上看到的页面是否真的来自最新提交。
+
+> 提醒：Cloudflare Pages 的 “Retry deployment” 通常是 **重跑同一次构建（同一个 commit）**。如果你刚推了新 commit，但点了旧部署的 Retry，就会继续上线旧代码；请在 Deployments 列表里确认部署对应的 commit SHA，或触发“部署最新 commit”。 

@@ -36,6 +36,12 @@ yarn-error.log*
 # vercel
 .vercel
 
+# Cloudflare Wrangler local artifacts
+.wrangler/
+.wrangler-logs/
+.xdg/
+.xdg-cache/
+
 # local home dir for build tools
 .home
 !.home/

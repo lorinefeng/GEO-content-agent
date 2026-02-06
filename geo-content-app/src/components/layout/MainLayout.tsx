@@ -12,9 +12,10 @@ import {
     MoonOutlined,
 } from '@ant-design/icons';
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import { useTheme } from '@/components/ThemeProvider';
 import axios from 'axios';
+import { AccountMenu } from '@/components/account/AccountMenu';
 
 const { Header, Content, Sider } = Layout;
 
@@ -24,16 +25,19 @@ interface MainLayoutProps {
 
 export default function MainLayout({ children }: MainLayoutProps) {
     const pathname = usePathname();
-    const router = useRouter();
     const { theme, toggleTheme } = useTheme();
     const [user, setUser] = React.useState<{ id: string; username: string; role: 'admin' | 'user' } | null>(null);
 
     React.useEffect(() => {
         let mounted = true;
         axios
-            .get('/api/auth/me')
+            .get('/api/auth/me', { validateStatus: () => true })
             .then((res) => {
                 if (!mounted) return;
+                if (res.status >= 400) {
+                    setUser(null);
+                    return;
+                }
                 setUser(res.data.user || null);
             })
             .catch(() => {
@@ -43,16 +47,7 @@ export default function MainLayout({ children }: MainLayoutProps) {
         return () => {
             mounted = false;
         };
-    }, []);
-
-    const handleLogout = async () => {
-        try {
-            await axios.post('/api/auth/logout');
-        } finally {
-            setUser(null);
-            router.replace('/login');
-        }
-    };
+    }, [pathname]);
 
     const menuItems = [
         {
@@ -214,21 +209,6 @@ export default function MainLayout({ children }: MainLayoutProps) {
                         </div>
 
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            {user && (
-                                <Tooltip title={`当前账号：${user.username}`}>
-                                    <Button
-                                        type="text"
-                                        style={{
-                                            color: 'var(--text-secondary)',
-                                            height: 36,
-                                            paddingInline: 10,
-                                        }}
-                                        onClick={handleLogout}
-                                    >
-                                        退出
-                                    </Button>
-                                </Tooltip>
-                            )}
                             <Tooltip title={theme === 'dark' ? '切换浅色模式' : '切换深色模式'}>
                                 <Button
                                     type="text"
@@ -241,6 +221,7 @@ export default function MainLayout({ children }: MainLayoutProps) {
                                     }}
                                 />
                             </Tooltip>
+                            <AccountMenu activeUser={user} onActiveUserChange={setUser} />
                         </div>
                     </Header>
 

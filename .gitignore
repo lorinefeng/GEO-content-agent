@@ -22,8 +22,15 @@ __pycache__/
 
 # Wrangler / Cloudflare local artifacts
 geo-content-app/.wrangler-logs/
+geo-content-app/.wrangler/
 geo-content-app/.xdg/
 geo-content-app/.xdg-cache/
+
+# Local test cookies
+.tmp_cj
+
+# Trae generated docs
+.trae/documents/
 
 # Output
 output/

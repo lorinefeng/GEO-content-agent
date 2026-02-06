@@ -146,6 +146,36 @@ export async function verifyUserPassword(db: D1Database, username: string, passw
   return ok ? user : null;
 }
 
+export async function createActiveUser(db: D1Database, input: { username: string; password: string; role?: UserRole }) {
+  const username = input.username.trim();
+  const password = input.password;
+  const role: UserRole = input.role === 'admin' ? 'admin' : 'user';
+
+  if (!username || !password) return { ok: false as const, error: '用户名或密码不能为空' as const };
+
+  const existingUser = (await db
+    .prepare('SELECT id FROM User WHERE username = ? LIMIT 1')
+    .bind(username)
+    .first()) as { id?: unknown } | null;
+  if (existingUser?.id) {
+    return { ok: false as const, error: '用户名已存在' as const };
+  }
+
+  const id = crypto.randomUUID();
+  const password_hash = await hashPassword(password);
+  await db
+    .prepare("INSERT INTO User (id, username, password_hash, role, status, created_at) VALUES (?, ?, ?, ?, 'active', datetime('now'))")
+    .bind(id, username, password_hash, role)
+    .run();
+
+  const created = (await db
+    .prepare('SELECT id, username, password_hash, role, status, created_at FROM User WHERE id = ?')
+    .bind(id)
+    .first()) as UserRow | null;
+  if (!created) throw new Error('创建用户失败');
+  return { ok: true, user: created } as const;
+}
+
 export async function createRegistrationRequest(db: D1Database, username: string, password: string) {
   const existingUser = (await db
     .prepare('SELECT id FROM User WHERE username = ? LIMIT 1')

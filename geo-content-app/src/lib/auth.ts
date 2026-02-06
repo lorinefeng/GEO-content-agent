@@ -107,6 +107,22 @@ export function getCookieValue(cookieHeader: string | null, name: string) {
   return null;
 }
 
+export function parseCookies(cookieHeader: string | null) {
+  const out: Record<string, string> = {};
+  if (!cookieHeader) return out;
+  const parts = cookieHeader.split(';');
+  for (const raw of parts) {
+    const p = raw.trim();
+    if (!p) continue;
+    const idx = p.indexOf('=');
+    if (idx === -1) continue;
+    const k = p.slice(0, idx).trim();
+    if (!k) continue;
+    out[k] = decodeURIComponent(p.slice(idx + 1));
+  }
+  return out;
+}
+
 export function buildSetCookie(
   name: string,
   value: string,

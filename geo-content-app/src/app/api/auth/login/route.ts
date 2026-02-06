@@ -11,6 +11,7 @@ import {
 export const runtime = 'edge';
 
 const COOKIE_NAME = 'geo_session';
+const ACCOUNT_COOKIE_PREFIX = 'geo_session_u_';
 
 export async function POST(req: NextRequest) {
   let db;
@@ -67,6 +68,8 @@ export async function POST(req: NextRequest) {
     success: true,
     user: { id: user.id, username: user.username, role: user.role },
   });
-  res.headers.append('Set-Cookie', buildSetCookie(COOKIE_NAME, token, { maxAgeSeconds: 60 * 60 * 24 * 7, secure }));
+  const maxAgeSeconds = 60 * 60 * 24 * 7;
+  res.headers.append('Set-Cookie', buildSetCookie(COOKIE_NAME, token, { maxAgeSeconds, secure }));
+  res.headers.append('Set-Cookie', buildSetCookie(`${ACCOUNT_COOKIE_PREFIX}${user.id}`, token, { maxAgeSeconds, secure }));
   return res;
 }
