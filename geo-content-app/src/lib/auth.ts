@@ -127,7 +127,7 @@ function randomBytes(len: number) {
 
 export async function hashPassword(password: string) {
   const salt = randomBytes(16);
-  const iterations = 200_000;
+  const iterations = 100_000;
   const keyMaterial = await crypto.subtle.importKey('raw', utf8Encode(password), 'PBKDF2', false, ['deriveBits']);
   const bits = await crypto.subtle.deriveBits(
     { name: 'PBKDF2', salt, iterations, hash: 'SHA-256' },
@@ -145,6 +145,7 @@ export async function verifyPassword(password: string, stored: string) {
   if (scheme !== 'pbkdf2') return false;
   const iterations = Number(iterRaw);
   if (!Number.isFinite(iterations) || iterations <= 0) return false;
+  if (iterations > 100_000) return false;
   const salt = base64UrlDecodeToBytes(saltRaw);
   const expected = base64UrlDecodeToBytes(hashRaw);
   const keyMaterial = await crypto.subtle.importKey('raw', utf8Encode(password), 'PBKDF2', false, ['deriveBits']);

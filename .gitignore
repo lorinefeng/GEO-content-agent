@@ -20,6 +20,11 @@ __pycache__/
 .idea/
 .DS_Store
 
+# Wrangler / Cloudflare local artifacts
+geo-content-app/.wrangler-logs/
+geo-content-app/.xdg/
+geo-content-app/.xdg-cache/
+
 # Output
 output/
 api/data/*.json
