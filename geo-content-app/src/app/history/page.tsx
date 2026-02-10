@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { Table, Tag, Button, Modal, Empty, Space, Typography, Input, Select, message, Popconfirm, Spin } from 'antd';
 import { EyeOutlined, DeleteOutlined, SearchOutlined, CopyOutlined, DownloadOutlined, LinkOutlined } from '@ant-design/icons';
 import MarkdownPreview from '@/components/MarkdownPreview';
@@ -53,6 +53,17 @@ export default function HistoryPage() {
     const [savingUrlIds, setSavingUrlIds] = useState<Record<string, boolean>>({});
     const [savedUrlMap, setSavedUrlMap] = useState<Record<string, string>>({});
     const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+    const pendingSaveTimersRef = useRef<Record<string, number>>({});
+    const articlesRef = useRef<Article[]>([]);
+    const savedUrlMapRef = useRef<Record<string, string>>({});
+
+    useEffect(() => {
+        articlesRef.current = articles;
+    }, [articles]);
+
+    useEffect(() => {
+        savedUrlMapRef.current = savedUrlMap;
+    }, [savedUrlMap]);
 
     const fetchArticles = async () => {
         try {
@@ -77,6 +88,78 @@ export default function HistoryPage() {
     useEffect(() => {
         fetchArticles();
     }, [filterStrategy]);
+
+    const patchPublishedUrl = async (articleId: string, url: string, opts?: { silent?: boolean; keepalive?: boolean }) => {
+        const lastSaved = savedUrlMapRef.current[articleId] ?? '';
+        if (url === lastSaved) return;
+
+        try {
+            const res = await fetch(`${API_BASE}/articles/${articleId}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({ published_url: url }),
+                keepalive: !!opts?.keepalive,
+            });
+            const contentType = res.headers.get('content-type') || '';
+            const data = contentType.includes('application/json') ? ((await res.json()) as { error?: unknown; article?: Article }) : null;
+            if (!res.ok) {
+                const err = data && typeof data.error === 'string' ? data.error : '';
+                if (!opts?.silent) message.error(err || '保存失败');
+                return;
+            }
+            const updated = data?.article;
+            if (updated && updated.id) {
+                setArticles((prev) => prev.map((a) => (a.id === articleId ? { ...a, ...updated } : a)));
+                setSavedUrlMap((prev) => ({
+                    ...prev,
+                    [articleId]: typeof updated.published_url === 'string' ? updated.published_url : '',
+                }));
+            } else {
+                setSavedUrlMap((prev) => ({ ...prev, [articleId]: url }));
+            }
+            if (!opts?.silent) message.success('已保存发表URL');
+        } catch {
+            if (!opts?.silent) message.error('保存失败');
+        }
+    };
+
+    const scheduleSavePublishedUrl = (articleId: string) => {
+        const timers = pendingSaveTimersRef.current;
+        const existing = timers[articleId];
+        if (existing) window.clearTimeout(existing);
+        timers[articleId] = window.setTimeout(() => {
+            const current = articlesRef.current.find((a) => a.id === articleId);
+            const url = typeof current?.published_url === 'string' ? current.published_url.trim() : '';
+            void patchPublishedUrl(articleId, url, { silent: true });
+        }, 800);
+    };
+
+    useEffect(() => {
+        return () => {
+            const timers = pendingSaveTimersRef.current;
+            for (const key of Object.keys(timers)) {
+                window.clearTimeout(timers[key]);
+            }
+            pendingSaveTimersRef.current = {};
+
+            const snapshotArticles = articlesRef.current;
+            const snapshotSaved = savedUrlMapRef.current;
+            for (const a of snapshotArticles) {
+                const url = typeof a.published_url === 'string' ? a.published_url.trim() : '';
+                const lastSaved = snapshotSaved[a.id] ?? '';
+                if (url !== lastSaved) {
+                    void fetch(`${API_BASE}/articles/${a.id}`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        credentials: 'include',
+                        body: JSON.stringify({ published_url: url }),
+                        keepalive: true,
+                    });
+                }
+            }
+        };
+    }, []);
 
     if (authLoading) {
         return (
@@ -107,32 +190,17 @@ export default function HistoryPage() {
     };
 
     const savePublishedUrl = async (articleId: string) => {
-        const current = articles.find((a) => a.id === articleId);
-        if (!current) return;
-        const url = typeof current.published_url === 'string' ? current.published_url.trim() : '';
-        const lastSaved = savedUrlMap[articleId] ?? '';
-        if (url === lastSaved) return;
+        const timers = pendingSaveTimersRef.current;
+        const existing = timers[articleId];
+        if (existing) window.clearTimeout(existing);
+        delete timers[articleId];
+
+        const current = articlesRef.current.find((a) => a.id === articleId);
+        const url = typeof current?.published_url === 'string' ? current.published_url.trim() : '';
 
         setSavingUrlIds((prev) => ({ ...prev, [articleId]: true }));
         try {
-            const res = await axios.patch(`${API_BASE}/articles/${articleId}`, { published_url: url });
-            const updated = res.data?.article as Article | undefined;
-            if (updated && updated.id) {
-                setArticles((prev) => prev.map((a) => (a.id === articleId ? { ...a, ...updated } : a)));
-                setSavedUrlMap((prev) => ({ ...prev, [articleId]: typeof updated.published_url === 'string' ? updated.published_url : '' }));
-                message.success('已保存发表URL');
-            } else {
-                setSavedUrlMap((prev) => ({ ...prev, [articleId]: url }));
-                message.success('已保存发表URL');
-            }
-        } catch (e) {
-            const axiosError = e as { response?: { data?: unknown } };
-            const data = axiosError?.response?.data as { error?: unknown } | undefined;
-            const serverMessage = data && typeof data.error === 'string' ? data.error : '';
-            message.error(serverMessage || '保存失败');
-            setArticles((prev) =>
-                prev.map((a) => (a.id === articleId ? { ...a, published_url: savedUrlMap[articleId] ?? '' } : a))
-            );
+            await patchPublishedUrl(articleId, url, { silent: false });
         } finally {
             setSavingUrlIds((prev) => ({ ...prev, [articleId]: false }));
         }
@@ -252,6 +320,7 @@ export default function HistoryPage() {
                         onChange={(e) => {
                             const next = e.target.value;
                             setArticles((prev) => prev.map((a) => (a.id === record.id ? { ...a, published_url: next } : a)));
+                            scheduleSavePublishedUrl(record.id);
                         }}
                         onBlur={() => savePublishedUrl(record.id)}
                         onPressEnter={() => savePublishedUrl(record.id)}
