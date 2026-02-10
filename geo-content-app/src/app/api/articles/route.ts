@@ -17,11 +17,11 @@ export async function GET(req: NextRequest) {
     const stmt = strategy
       ? db
           .prepare(
-            'SELECT id, product_name, product_price, strategy, strategy_name, content, created_at FROM Article WHERE strategy = ? ORDER BY created_at DESC LIMIT 50'
+            'SELECT id, product_name, product_price, product_id, strategy, strategy_name, content, published_url, product_payload, created_at, updated_at FROM Article WHERE strategy = ? ORDER BY created_at DESC LIMIT 50'
           )
           .bind(strategy)
       : db.prepare(
-          'SELECT id, product_name, product_price, strategy, strategy_name, content, created_at FROM Article ORDER BY created_at DESC LIMIT 50'
+          'SELECT id, product_name, product_price, product_id, strategy, strategy_name, content, published_url, product_payload, created_at, updated_at FROM Article ORDER BY created_at DESC LIMIT 50'
         );
 
     const result = await stmt.all();
@@ -43,15 +43,21 @@ export async function POST(req: NextRequest) {
     const body = (await req.json()) as {
       product_name?: unknown;
       product_price?: unknown;
+      product_id?: unknown;
+      product_payload?: unknown;
       strategy?: unknown;
       strategy_name?: unknown;
       content?: unknown;
+      published_url?: unknown;
     };
 
     const product_name = typeof body.product_name === 'string' ? body.product_name : '';
     const strategy = typeof body.strategy === 'string' ? body.strategy : '';
     const strategy_name = typeof body.strategy_name === 'string' ? body.strategy_name : '';
     const content = typeof body.content === 'string' ? body.content : '';
+    const product_id = typeof body.product_id === 'string' ? body.product_id : '';
+    const product_payload = typeof body.product_payload === 'string' ? body.product_payload : '';
+    const published_url = typeof body.published_url === 'string' ? body.published_url : '';
     const priceRaw = body.product_price;
     const price =
       typeof priceRaw === 'number'
@@ -68,14 +74,14 @@ export async function POST(req: NextRequest) {
 
     await db
       .prepare(
-        'INSERT INTO Article (id, product_name, product_price, strategy, strategy_name, content, created_at) VALUES (?, ?, ?, ?, ?, ?, datetime(\'now\'))'
+        'INSERT INTO Article (id, product_name, product_price, product_id, strategy, strategy_name, content, published_url, product_payload, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime(\'now\'), datetime(\'now\'))'
       )
-      .bind(id, product_name, price, strategy, strategy_name, content)
+      .bind(id, product_name, price, product_id || null, strategy, strategy_name, content, published_url || null, product_payload || null)
       .run();
 
     const created = await db
       .prepare(
-        'SELECT id, product_name, product_price, strategy, strategy_name, content, created_at FROM Article WHERE id = ?'
+        'SELECT id, product_name, product_price, product_id, strategy, strategy_name, content, published_url, product_payload, created_at, updated_at FROM Article WHERE id = ?'
       )
       .bind(id)
       .first();

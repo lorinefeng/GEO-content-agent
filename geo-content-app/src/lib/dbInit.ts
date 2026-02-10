@@ -138,21 +138,47 @@ const DEFAULT_TEMPLATES: Array<{ strategy: string; name: string; prompt: string 
 export async function ensureDatabaseReady(db?: D1Database) {
   const database = db ?? getD1Database();
 
+  const ensureArticleColumns = async () => {
+    const info = await database.prepare(`PRAGMA table_info('Article')`).all();
+    const existing = new Set<string>();
+    for (const row of (info.results ?? []) as Array<Record<string, unknown>>) {
+      const name = typeof row.name === 'string' ? row.name : '';
+      if (name) existing.add(name);
+    }
+
+    const addColumnIfMissing = async (name: string, def: string) => {
+      if (existing.has(name)) return;
+      await database.prepare(`ALTER TABLE Article ADD COLUMN ${def}`).run();
+      existing.add(name);
+    };
+
+    await addColumnIfMissing('published_url', `published_url TEXT`);
+    await addColumnIfMissing('product_payload', `product_payload TEXT`);
+    await addColumnIfMissing('product_id', `product_id TEXT`);
+    await addColumnIfMissing('updated_at', `updated_at TEXT`);
+  };
+
   await database
     .prepare(
       `CREATE TABLE IF NOT EXISTS Article (
         id TEXT PRIMARY KEY,
         product_name TEXT NOT NULL,
         product_price REAL NOT NULL,
+        product_id TEXT,
         strategy TEXT NOT NULL,
         strategy_name TEXT NOT NULL,
         content TEXT NOT NULL,
-        created_at TEXT DEFAULT (datetime('now'))
+        published_url TEXT,
+        product_payload TEXT,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT
       )`
     )
     .run();
+  await ensureArticleColumns();
   await database.prepare('CREATE INDEX IF NOT EXISTS idx_article_strategy ON Article(strategy)').run();
   await database.prepare('CREATE INDEX IF NOT EXISTS idx_article_created_at ON Article(created_at DESC)').run();
+  await database.prepare('CREATE INDEX IF NOT EXISTS idx_article_product_id ON Article(product_id)').run();
 
   await database
     .prepare(
@@ -220,4 +246,3 @@ export async function ensureDatabaseReady(db?: D1Database) {
 
   return database;
 }
-
