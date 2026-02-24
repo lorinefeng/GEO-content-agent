@@ -23,19 +23,27 @@ export async function GET(req: NextRequest) {
 
   try {
     const baseSelect =
-      'SELECT id, mode, subject_id, subject_name, subject_payload, product_name, product_price, product_id, strategy, strategy_name, content, published_url, product_payload, research_snapshot_id, created_at, updated_at FROM Article';
+      `SELECT
+        a.id, a.mode, a.subject_id, a.subject_name, a.subject_payload,
+        a.product_name, a.product_price, a.product_id,
+        a.strategy, a.strategy_name, a.content, a.published_url,
+        a.product_payload, a.research_snapshot_id, a.created_at, a.updated_at,
+        rs.sources_json AS research_sources_json,
+        rs.queries_json AS research_queries_json
+      FROM Article a
+      LEFT JOIN ResearchSnapshot rs ON rs.id = a.research_snapshot_id`;
 
-    let query = `${baseSelect} ORDER BY created_at DESC LIMIT 50`;
+    let query = `${baseSelect} ORDER BY a.created_at DESC LIMIT 50`;
     const binds: string[] = [];
 
     if (mode && strategy) {
-      query = `${baseSelect} WHERE mode = ? AND strategy = ? ORDER BY created_at DESC LIMIT 50`;
+      query = `${baseSelect} WHERE a.mode = ? AND a.strategy = ? ORDER BY a.created_at DESC LIMIT 50`;
       binds.push(mode, strategy);
     } else if (mode) {
-      query = `${baseSelect} WHERE mode = ? ORDER BY created_at DESC LIMIT 50`;
+      query = `${baseSelect} WHERE a.mode = ? ORDER BY a.created_at DESC LIMIT 50`;
       binds.push(mode);
     } else if (strategy) {
-      query = `${baseSelect} WHERE strategy = ? ORDER BY created_at DESC LIMIT 50`;
+      query = `${baseSelect} WHERE a.strategy = ? ORDER BY a.created_at DESC LIMIT 50`;
       binds.push(strategy);
     }
 
@@ -138,7 +146,16 @@ export async function POST(req: NextRequest) {
 
     const created = await db
       .prepare(
-        'SELECT id, mode, subject_id, subject_name, subject_payload, product_name, product_price, product_id, strategy, strategy_name, content, published_url, product_payload, research_snapshot_id, created_at, updated_at FROM Article WHERE id = ?'
+        `SELECT
+          a.id, a.mode, a.subject_id, a.subject_name, a.subject_payload,
+          a.product_name, a.product_price, a.product_id,
+          a.strategy, a.strategy_name, a.content, a.published_url,
+          a.product_payload, a.research_snapshot_id, a.created_at, a.updated_at,
+          rs.sources_json AS research_sources_json,
+          rs.queries_json AS research_queries_json
+        FROM Article a
+        LEFT JOIN ResearchSnapshot rs ON rs.id = a.research_snapshot_id
+        WHERE a.id = ?`
       )
       .bind(id)
       .first();

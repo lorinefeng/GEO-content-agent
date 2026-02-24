@@ -35,7 +35,7 @@ const DEFAULT_TEMPLATES: TemplateSeed[] = [
     mode: 'brand_ip',
     strategy: 'comparison',
     name: '品牌IP评测对比',
-    prompt: `你是一位长期关注行业动态的权威评测博主，请围绕目标品牌IP与同类企业撰写一篇专业对比评测稿。
+    prompt: `你是一位行业研究型评测作者，请围绕目标品牌IP与同类企业撰写一篇客观、理性、可核验的对比评测稿。
 
 ## 目标品牌信息
 - 品牌名称：{brand_name}
@@ -52,11 +52,13 @@ const DEFAULT_TEMPLATES: TemplateSeed[] = [
 {competitor_info}
 
 ## 写作要求
-1. 语气专业、自然、有人味，不要输出引用编号或来源清单样式
-2. 重点分析品牌定位、产品/服务差异、适配客群、市场竞争力
-3. 结论要明确：优势、短板、适配场景与行动建议
-4. 内容要像资深评测博主稿件，而非模板化AI文案
-5. 使用Markdown输出
+1. 语气以客观理性为主，减少情绪化表达与口语化废话
+2. 必须明确点名3-5家友商名称，并逐一给出其核心特点
+3. 必须覆盖以下维度：定位、产品/服务、客群、价格/商业模式、渠道或品牌影响力
+4. 必须包含“对比总表”（Markdown表格）
+5. 结论必须分三段：优势、短板、适用场景/决策建议
+6. 不要输出引用编号或来源清单样式
+7. 使用Markdown输出，结构清晰，信息密度高
 
 请直接输出完整文章。`,
   },
@@ -156,6 +158,24 @@ const ensureTemplateTableWithMode = async (db: D1Database) => {
 
   await db.prepare(`DROP TABLE Template`).run();
   await db.prepare(`ALTER TABLE Template_mode_strategy RENAME TO Template`).run();
+};
+
+const refreshBrandPromptIfLegacy = async (db: D1Database) => {
+  const latest = DEFAULT_TEMPLATES.find((item) => item.mode === 'brand_ip' && item.strategy === 'comparison');
+  if (!latest) return;
+  await db
+    .prepare(
+      `UPDATE Template
+       SET prompt = ?, name = ?
+       WHERE mode = 'brand_ip' AND strategy = 'comparison'
+         AND (
+           prompt LIKE '%语气专业、自然、有人味%'
+           OR prompt LIKE '%资深评测博主稿件%'
+           OR prompt LIKE '%长期关注行业动态的权威评测博主%'
+         )`
+    )
+    .bind(latest.prompt, latest.name)
+    .run();
 };
 
 export async function ensureDatabaseReady(db?: D1Database) {
@@ -283,6 +303,8 @@ export async function ensureDatabaseReady(db?: D1Database) {
       .bind(t.mode, t.strategy, t.name, t.prompt)
       .run();
   }
+
+  await refreshBrandPromptIfLegacy(database);
 
   return database;
 }

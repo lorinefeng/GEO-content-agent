@@ -24,6 +24,8 @@ interface Article {
     content: string;
     published_url?: string | null;
     product_payload?: string | null;
+    research_sources_json?: string | null;
+    research_queries_json?: string | null;
     created_at: string;
     updated_at?: string | null;
 }
@@ -45,6 +47,37 @@ const downloadBlob = (blob: Blob, filename: string) => {
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
+};
+
+const parseResearchSources = (raw: string | null | undefined) => {
+    if (!raw) return [] as Array<{ title: string; url: string }>;
+    try {
+        const parsed = JSON.parse(raw) as unknown;
+        if (!Array.isArray(parsed)) return [];
+        return parsed
+            .map((item) => {
+                if (!item || typeof item !== 'object') return null;
+                const row = item as Record<string, unknown>;
+                const title = typeof row.title === 'string' ? row.title : '';
+                const url = typeof row.url === 'string' ? row.url : '';
+                if (!url) return null;
+                return { title: title || url, url };
+            })
+            .filter((item): item is { title: string; url: string } => Boolean(item));
+    } catch {
+        return [];
+    }
+};
+
+const parseResearchQueries = (raw: string | null | undefined) => {
+    if (!raw) return [] as string[];
+    try {
+        const parsed = JSON.parse(raw) as unknown;
+        if (!Array.isArray(parsed)) return [];
+        return parsed.filter((item): item is string => typeof item === 'string' && item.trim().length > 0);
+    } catch {
+        return [];
+    }
 };
 
 export default function HistoryPage() {
@@ -494,7 +527,48 @@ export default function HistoryPage() {
                     body: { background: 'var(--bg-secondary)', padding: 24 },
                 }}
             >
-                {selectedArticle && <MarkdownPreview content={selectedArticle.content} />}
+                {selectedArticle && (
+                    <div>
+                        <MarkdownPreview content={selectedArticle.content} />
+
+                        {parseResearchSources(selectedArticle.research_sources_json).length > 0 && (
+                            <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--border-primary)' }}>
+                                <Text strong style={{ color: 'var(--text-primary)' }}>
+                                    Agent检索溯源链接
+                                </Text>
+                                <div style={{ marginTop: 10 }}>
+                                    {parseResearchSources(selectedArticle.research_sources_json).map((source, index) => (
+                                        <div key={`${source.url}-${index}`} style={{ marginBottom: 8 }}>
+                                            <a
+                                                href={source.url}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                style={{ color: 'var(--accent-primary)' }}
+                                            >
+                                                {index + 1}. {source.title}
+                                            </a>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {parseResearchQueries(selectedArticle.research_queries_json).length > 0 && (
+                            <div style={{ marginTop: 16 }}>
+                                <Text strong style={{ color: 'var(--text-primary)' }}>
+                                    检索Query
+                                </Text>
+                                <div style={{ marginTop: 8 }}>
+                                    {parseResearchQueries(selectedArticle.research_queries_json).map((query, index) => (
+                                        <Tag key={`${query}-${index}`} style={{ marginBottom: 6 }}>
+                                            {query}
+                                        </Tag>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
             </Modal>
         </div>
     );

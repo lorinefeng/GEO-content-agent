@@ -27,6 +27,7 @@ export interface BrandCompetitorResearchResult {
   brandProfile: string;
   competitorInfo: string;
   sources: Array<{ title: string; url: string }>;
+  competitors: Array<{ name: string; feature: string; url: string }>;
   process: ResearchProcessStep[];
   researchMeta: BrandResearchMeta;
 }
@@ -45,6 +46,21 @@ const getDomain = (url: string) => {
   } catch {
     return '';
   }
+};
+
+const extractCompetitorName = (title: string, url: string) => {
+  const candidates = title
+    .split(/[-|｜:：·•]/g)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const first = candidates[0] || '';
+  const domain = getDomain(url);
+  const domainName = domain ? domain.split('.')[0] : '';
+  const fallback = domainName ? domainName.replace(/[-_]/g, ' ').trim() : '未命名友商';
+
+  const badWords = ['官网', '首页', '评测', '对比', '新闻', '行业', '报告'];
+  const clean = first && !badWords.some((word) => first.includes(word)) ? first : fallback;
+  return clean.length > 40 ? clean.slice(0, 40) : clean;
 };
 
 const dedupeByUrl = (rows: ExaSearchResult[]) => {
@@ -206,6 +222,7 @@ export async function buildBrandCompetitorResearch(input: BrandInput): Promise<B
       competitorInfo:
         '当前未检索到足够的同类企业信息。请基于已知行业背景与品牌定位，给出审慎、客观的竞争对比分析。',
       sources: [],
+      competitors: [],
       process,
       researchMeta: {
         provider: 'exa',
@@ -226,14 +243,35 @@ export async function buildBrandCompetitorResearch(input: BrandInput): Promise<B
     return `${index + 1}. ${row.title}（${domain || 'unknown'}）\n   - 线索摘要：${summarize(row.text, 180) || '无摘要'}`;
   });
 
+  const competitors = selected
+    .map((row) => ({
+      name: extractCompetitorName(row.title, row.url),
+      feature: summarize(row.text, 120) || '公开信息中未提取到明确特点',
+      url: row.url,
+    }))
+    .filter((item) => {
+      const brand = compact(input.name).toLowerCase();
+      const name = compact(item.name).toLowerCase();
+      return !!name && !name.includes(brand);
+    })
+    .slice(0, 5);
+
+  const namedCompetitorLines = competitors.map(
+    (item, index) => `${index + 1}. ${item.name}\n   - 核心特点：${item.feature}`
+  );
+
   return {
     brandProfile,
     competitorInfo: [
       `已基于公开网页检索到与“${input.name}”相关的同类企业线索（优先中国市场）：`,
+      namedCompetitorLines.length > 0 ? `建议重点对比友商（点名）：\n\n${namedCompetitorLines.join('\n\n')}` : '',
       sourceLines.join('\n\n'),
       '请归纳3-5家最具可比性的企业并输出客观评测，不要在正文展示来源链接与引用编号。',
-    ].join('\n\n'),
+    ]
+      .filter(Boolean)
+      .join('\n\n'),
     sources: selected.map((row) => ({ title: row.title, url: row.url })),
+    competitors,
     process,
     researchMeta: {
       provider: 'exa',

@@ -42,7 +42,16 @@ export async function PATCH(
 
     const updated = await db
       .prepare(
-        'SELECT id, mode, subject_id, subject_name, subject_payload, product_name, product_price, product_id, strategy, strategy_name, content, published_url, product_payload, research_snapshot_id, created_at, updated_at FROM Article WHERE id = ?'
+        `SELECT
+          a.id, a.mode, a.subject_id, a.subject_name, a.subject_payload,
+          a.product_name, a.product_price, a.product_id,
+          a.strategy, a.strategy_name, a.content, a.published_url,
+          a.product_payload, a.research_snapshot_id, a.created_at, a.updated_at,
+          rs.sources_json AS research_sources_json,
+          rs.queries_json AS research_queries_json
+        FROM Article a
+        LEFT JOIN ResearchSnapshot rs ON rs.id = a.research_snapshot_id
+        WHERE a.id = ?`
       )
       .bind(id)
       .first();
@@ -71,7 +80,16 @@ export async function DELETE(
   try {
     const deleted = await db
       .prepare(
-        'SELECT id, mode, subject_id, subject_name, subject_payload, product_name, product_price, product_id, strategy, strategy_name, content, published_url, product_payload, research_snapshot_id, created_at, updated_at FROM Article WHERE id = ?'
+        `SELECT
+          a.id, a.mode, a.subject_id, a.subject_name, a.subject_payload,
+          a.product_name, a.product_price, a.product_id,
+          a.strategy, a.strategy_name, a.content, a.published_url,
+          a.product_payload, a.research_snapshot_id, a.created_at, a.updated_at,
+          rs.sources_json AS research_sources_json,
+          rs.queries_json AS research_queries_json
+        FROM Article a
+        LEFT JOIN ResearchSnapshot rs ON rs.id = a.research_snapshot_id
+        WHERE a.id = ?`
       )
       .bind(id)
       .first();

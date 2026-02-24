@@ -229,6 +229,7 @@ export async function POST(req: NextRequest) {
           mode,
           ...research.researchMeta,
           sources: research.sources,
+          competitors: research.competitors,
         };
       }
 
@@ -237,7 +238,7 @@ export async function POST(req: NextRequest) {
           const template = templateMap.get(strategy);
           const basePrompt =
             template?.prompt ||
-            '你是一位权威评测博主，请输出一篇专业可信、结论明确、可直接发布的品牌IP对比评测。';
+            '你是一位行业研究型评测作者，请输出一篇客观理性、结构严谨、可直接发布的品牌IP对比评测。';
 
           const vars: Record<string, string> = {
             strategy,
@@ -258,7 +259,7 @@ export async function POST(req: NextRequest) {
             `## 品牌信息\n- 品牌名称：${brandName}\n- 官网：${brandWebsite}\n- 行业提示：${industryHint || '未提供'}\n- 地域：${region}\n- 关键词：${keywords.join(', ') || '未提供'}\n- 补充说明：${brandDescription || '无'}`,
             `## 品牌画像\n${brandProfile}`,
             `## 竞品参考信息\n${compInfo}`,
-            `## 重要要求\n- 不要输出引用编号或来源清单样式\n- 以自然、专业、权威评测博主口吻写作`,
+            `## 重要要求\n- 必须明确点名3-5家友商并说明各自核心特点\n- 使用客观理性、信息密度高的表达，不要情绪化废话\n- 不要输出引用编号或来源清单样式`,
           ]
             .filter(Boolean)
             .join('\n\n');
