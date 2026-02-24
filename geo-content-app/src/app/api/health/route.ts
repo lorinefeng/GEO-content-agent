@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getCloudflareEnv, getD1Database } from '@/lib/cloudflare';
 import { ensureDatabaseReady } from '@/lib/dbInit';
 import { getBootstrapAdminConfig } from '@/lib/authDb';
+import { runtimeConfig } from '@/config/runtimeConfig';
 
 export const runtime = 'edge';
 
@@ -11,10 +12,21 @@ export async function GET() {
   const hasOpenAIKey = typeof env.OPENAI_API_KEY === 'string' && env.OPENAI_API_KEY.length > 0;
   const hasOpenAIBaseUrl = typeof env.OPENAI_BASE_URL === 'string' && env.OPENAI_BASE_URL.length > 0;
   const openAIModel = typeof env.OPENAI_MODEL === 'string' && env.OPENAI_MODEL ? env.OPENAI_MODEL : undefined;
+  const hasExaKey =
+    (typeof env.EXA_API_KEY === 'string' && env.EXA_API_KEY.length > 0) || Boolean(runtimeConfig.exaApiKey);
+  const exaBaseUrl =
+    (typeof env.EXA_SEARCH_BASE_URL === 'string' && env.EXA_SEARCH_BASE_URL) || runtimeConfig.exaSearchBaseUrl;
 
   let d1Bound = true;
   let d1Tables:
-    | { Article: boolean; Template: boolean; TemplateRevision: boolean; User: boolean; RegistrationRequest: boolean }
+    | {
+        Article: boolean;
+        Template: boolean;
+        TemplateRevision: boolean;
+        ResearchSnapshot: boolean;
+        User: boolean;
+        RegistrationRequest: boolean;
+      }
     | undefined;
   let d1Error: string | undefined;
   let authBootstrap: { username: string; forceReset: boolean } | undefined;
@@ -25,7 +37,7 @@ export async function GET() {
     const db = await ensureDatabaseReady(getD1Database());
     const rows = await db
       .prepare(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('Article','Template','TemplateRevision','User','RegistrationRequest')"
+        "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('Article','Template','TemplateRevision','ResearchSnapshot','User','RegistrationRequest')"
       )
       .all();
     const names = new Set((rows?.results ?? []).map((r) => (r as { name?: unknown }).name).filter((n): n is string => typeof n === 'string'));
@@ -33,6 +45,7 @@ export async function GET() {
       Article: names.has('Article'),
       Template: names.has('Template'),
       TemplateRevision: names.has('TemplateRevision'),
+      ResearchSnapshot: names.has('ResearchSnapshot'),
       User: names.has('User'),
       RegistrationRequest: names.has('RegistrationRequest'),
     };
@@ -66,6 +79,8 @@ export async function GET() {
       OPENAI_API_KEY: hasOpenAIKey,
       OPENAI_BASE_URL: hasOpenAIBaseUrl,
       OPENAI_MODEL: openAIModel ?? null,
+      EXA_API_KEY: hasExaKey,
+      EXA_SEARCH_BASE_URL: exaBaseUrl,
     },
     d1: {
       bound: d1Bound,

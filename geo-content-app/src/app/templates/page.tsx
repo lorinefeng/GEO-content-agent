@@ -1,14 +1,16 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Row, Col, Typography, Button, Input, message, Spin, Empty, Table, Space, Popconfirm } from 'antd';
+import { Row, Col, Typography, Button, Input, message, Spin, Empty, Table, Space, Popconfirm, Tabs, Tag } from 'antd';
 import { SaveOutlined, ReloadOutlined } from '@ant-design/icons';
 import axios from 'axios';
 import { useRequireAuth } from '@/lib/useRequireAuth';
+import type { ContentMode } from '@/components/StrategySelector';
 
 const { Text, Paragraph } = Typography;
 
 interface Template {
+    mode: ContentMode;
     strategy: string;
     name: string;
     prompt: string;
@@ -16,21 +18,18 @@ interface Template {
 
 interface TemplateRevision {
     id: string;
+    mode: ContentMode;
     changed_at: string;
     changed_by?: string | null;
 }
 
 const API_BASE = '/api';
 
-const strategyList = [
-    { id: 'comparison', name: '评测对比型' },
-    { id: 'persona', name: '用户画像匹配型' },
-    { id: 'smzdm_review', name: 'SMZDM深度评测' },
-    { id: 'smzdm_short', name: 'SMZDM短评测' },
-];
+const strategyList = [{ id: 'comparison', name: '对比评测' }];
 
 export default function TemplatesPage() {
     const { loading: authLoading } = useRequireAuth();
+    const [mode, setMode] = useState<ContentMode>('sku');
     const [templates, setTemplates] = useState<Template[]>([]);
     const [selectedStrategy, setSelectedStrategy] = useState('comparison');
     const [editedPrompt, setEditedPrompt] = useState('');
@@ -40,10 +39,10 @@ export default function TemplatesPage() {
     const [revisions, setRevisions] = useState<TemplateRevision[]>([]);
     const [loadingRevisions, setLoadingRevisions] = useState(false);
 
-    const fetchTemplates = async () => {
+    const fetchTemplates = async (currentMode: ContentMode = mode) => {
         setLoading(true);
         try {
-            const response = await axios.get(`${API_BASE}/templates`);
+            const response = await axios.get(`${API_BASE}/templates`, { params: { mode: currentMode } });
             setTemplates(response.data.templates || []);
         } catch (error) {
             console.error('获取模板失败:', error);
@@ -53,14 +52,12 @@ export default function TemplatesPage() {
         }
     };
 
-    useEffect(() => {
-        fetchTemplates();
-    }, []);
-
-    const fetchRevisions = async (strategy: string) => {
+    const fetchRevisions = async (strategy: string, currentMode: ContentMode = mode) => {
         setLoadingRevisions(true);
         try {
-            const response = await axios.get(`${API_BASE}/templates/${strategy}/revisions`);
+            const response = await axios.get(`${API_BASE}/templates/${strategy}/revisions`, {
+                params: { mode: currentMode },
+            });
             setRevisions(response.data.revisions || []);
         } catch {
             setRevisions([]);
@@ -70,24 +67,33 @@ export default function TemplatesPage() {
     };
 
     useEffect(() => {
+        fetchTemplates(mode);
+    }, [mode]);
+
+    useEffect(() => {
         const template = templates.find((t) => t.strategy === selectedStrategy);
         if (template) {
             setEditedPrompt(template.prompt);
             setHasChanges(false);
+        } else {
+            setEditedPrompt('');
+            setHasChanges(false);
         }
-        fetchRevisions(selectedStrategy);
-    }, [selectedStrategy, templates]);
+        fetchRevisions(selectedStrategy, mode);
+    }, [selectedStrategy, templates, mode]);
 
     const handleSave = async () => {
         setSaving(true);
         try {
-            await axios.put(`${API_BASE}/templates/${selectedStrategy}`, {
-                prompt: editedPrompt,
-            });
+            await axios.put(
+                `${API_BASE}/templates/${selectedStrategy}`,
+                { prompt: editedPrompt },
+                { params: { mode } }
+            );
             message.success('模板保存成功');
             setHasChanges(false);
-            fetchTemplates();
-            fetchRevisions(selectedStrategy);
+            fetchTemplates(mode);
+            fetchRevisions(selectedStrategy, mode);
         } catch {
             message.error('保存失败');
         } finally {
@@ -98,11 +104,15 @@ export default function TemplatesPage() {
     const handleRollback = async (revisionId: string) => {
         setSaving(true);
         try {
-            await axios.post(`${API_BASE}/templates/${selectedStrategy}/rollback`, { revision_id: revisionId });
+            await axios.post(
+                `${API_BASE}/templates/${selectedStrategy}/rollback`,
+                { revision_id: revisionId },
+                { params: { mode } }
+            );
             message.success('已回滚');
             setHasChanges(false);
-            await fetchTemplates();
-            await fetchRevisions(selectedStrategy);
+            await fetchTemplates(mode);
+            await fetchRevisions(selectedStrategy, mode);
         } catch {
             message.error('回滚失败');
         } finally {
@@ -123,8 +133,18 @@ export default function TemplatesPage() {
 
     return (
         <div style={{ maxWidth: 1200, margin: '0 auto' }}>
+            <div style={{ marginBottom: 16 }}>
+                <Tabs
+                    activeKey={mode}
+                    onChange={(key) => setMode(key as ContentMode)}
+                    items={[
+                        { key: 'sku', label: 'SKU模板' },
+                        { key: 'brand_ip', label: '品牌IP模板' },
+                    ]}
+                />
+            </div>
+
             <Row gutter={24}>
-                {/* 左侧：策略列表 */}
                 <Col xs={24} md={8} lg={6}>
                     <div
                         style={{
@@ -155,14 +175,20 @@ export default function TemplatesPage() {
                                         borderRadius: 'var(--radius-sm)',
                                         cursor: 'pointer',
                                         background: selectedStrategy === s.id ? 'var(--bg-tertiary)' : 'transparent',
-                                        borderLeft: selectedStrategy === s.id ? '3px solid var(--accent-primary)' : '3px solid transparent',
+                                        borderLeft:
+                                            selectedStrategy === s.id
+                                                ? '3px solid var(--accent-primary)'
+                                                : '3px solid transparent',
                                         transition: 'all 0.15s ease',
                                         marginBottom: 4,
                                     }}
                                 >
                                     <Text
                                         style={{
-                                            color: selectedStrategy === s.id ? 'var(--text-primary)' : 'var(--text-secondary)',
+                                            color:
+                                                selectedStrategy === s.id
+                                                    ? 'var(--text-primary)'
+                                                    : 'var(--text-secondary)',
                                             fontWeight: selectedStrategy === s.id ? 500 : 400,
                                         }}
                                     >
@@ -174,7 +200,6 @@ export default function TemplatesPage() {
                     </div>
                 </Col>
 
-                {/* 右侧：编辑区 */}
                 <Col xs={24} md={16} lg={18}>
                     <div
                         style={{
@@ -198,6 +223,7 @@ export default function TemplatesPage() {
                                 <Text strong style={{ color: 'var(--text-primary)', fontSize: 14 }}>
                                     {currentTemplate?.name || '编辑模板'}
                                 </Text>
+                                <Tag style={{ marginLeft: 8 }}>{mode === 'sku' ? 'SKU' : '品牌IP'}</Tag>
                                 {hasChanges && (
                                     <Text style={{ color: 'var(--accent-primary)', marginLeft: 8, fontSize: 12 }}>
                                         • 未保存
@@ -205,11 +231,7 @@ export default function TemplatesPage() {
                                 )}
                             </div>
                             <div style={{ display: 'flex', gap: 8 }}>
-                                <Button
-                                    icon={<ReloadOutlined />}
-                                    onClick={fetchTemplates}
-                                    style={{ color: 'var(--text-secondary)' }}
-                                >
+                                <Button icon={<ReloadOutlined />} onClick={() => fetchTemplates(mode)} style={{ color: 'var(--text-secondary)' }}>
                                     刷新
                                 </Button>
                                 <Button
@@ -235,14 +257,8 @@ export default function TemplatesPage() {
                                 </div>
                             ) : currentTemplate ? (
                                 <>
-                                    <Paragraph
-                                        style={{
-                                            color: 'var(--text-tertiary)',
-                                            fontSize: 13,
-                                            marginBottom: 12,
-                                        }}
-                                    >
-                                        Prompt模板用于指导AI生成内容。支持使用占位符如 {'{product_name}'}, {'{price}'} 等。
+                                    <Paragraph style={{ color: 'var(--text-tertiary)', fontSize: 13, marginBottom: 12 }}>
+                                        当前仅保留“对比评测”策略。SKU与品牌IP模板完全独立，互不影响。
                                     </Paragraph>
                                     <Input.TextArea
                                         value={editedPrompt}

@@ -1,13 +1,8 @@
 'use client';
 
 import React from 'react';
-import { Card, Row, Col, Typography, Button } from 'antd';
-import {
-  EditOutlined,
-  FileTextOutlined,
-  ThunderboltOutlined,
-  ArrowRightOutlined,
-} from '@ant-design/icons';
+import { Card, Row, Col, Typography } from 'antd';
+import { EditOutlined, FileTextOutlined, ArrowRightOutlined } from '@ant-design/icons';
 import Link from 'next/link';
 
 const { Title, Paragraph } = Typography;
@@ -15,7 +10,6 @@ const { Title, Paragraph } = Typography;
 export default function HomePage() {
   return (
     <div style={{ maxWidth: 1000, margin: '0 auto' }}>
-      {/* 欢迎区域 */}
       <div style={{ marginBottom: 40 }}>
         <Title
           level={2}
@@ -35,11 +29,10 @@ export default function HomePage() {
             margin: 0,
           }}
         >
-          导入商品信息，选择策略，一键生成专业内容
+          在SKU模式与品牌IP模式下生成对比评测内容
         </Paragraph>
       </div>
 
-      {/* 快捷操作 */}
       <Row gutter={[20, 20]} style={{ marginBottom: 40 }}>
         <Col xs={24} md={12}>
           <Link href="/generate" style={{ display: 'block' }}>
@@ -74,7 +67,7 @@ export default function HomePage() {
                     创建内容
                   </Title>
                   <Paragraph style={{ color: 'var(--text-secondary)', margin: 0, fontSize: 14 }}>
-                    输入商品信息，选择生成策略
+                    选择SKU或品牌IP模式，生成对比评测
                   </Paragraph>
                 </div>
                 <ArrowRightOutlined style={{ color: 'var(--text-tertiary)', fontSize: 18 }} />
@@ -116,7 +109,7 @@ export default function HomePage() {
                     历史记录
                   </Title>
                   <Paragraph style={{ color: 'var(--text-secondary)', margin: 0, fontSize: 14 }}>
-                    查看和管理已生成的内容
+                    按SKU与品牌IP分栏管理已生成内容
                   </Paragraph>
                 </div>
                 <ArrowRightOutlined style={{ color: 'var(--text-tertiary)', fontSize: 18 }} />
@@ -126,7 +119,6 @@ export default function HomePage() {
         </Col>
       </Row>
 
-      {/* 功能介绍 */}
       <div style={{ marginBottom: 24 }}>
         <Title
           level={5}
@@ -139,47 +131,45 @@ export default function HomePage() {
             marginBottom: 16,
           }}
         >
-          支持的生成策略
+          当前策略
         </Title>
       </div>
 
       <Row gutter={[16, 16]}>
-        {[
-          { name: '评测对比型', desc: '专业评测，竞品分析表格' },
-          { name: '用户画像型', desc: '面向特定人群的购物指南' },
-          { name: 'SMZDM深度评测', desc: '什么值得买平台风格' },
-          { name: 'SMZDM短评测', desc: '简洁好物分享风格' },
-        ].map((item, index) => (
-          <Col xs={12} md={6} key={index}>
-            <div
-              style={{
-                padding: 16,
-                background: 'var(--bg-secondary)',
-                border: '1px solid var(--border-primary)',
-                borderRadius: 'var(--radius-md)',
-              }}
-            >
-              <div
-                style={{
-                  fontSize: 14,
-                  fontWeight: 500,
-                  color: 'var(--text-primary)',
-                  marginBottom: 4,
-                }}
-              >
-                {item.name}
-              </div>
-              <div
-                style={{
-                  fontSize: 12,
-                  color: 'var(--text-tertiary)',
-                }}
-              >
-                {item.desc}
-              </div>
+        <Col xs={24} md={12}>
+          <div
+            style={{
+              padding: 16,
+              background: 'var(--bg-secondary)',
+              border: '1px solid var(--border-primary)',
+              borderRadius: 'var(--radius-md)',
+            }}
+          >
+            <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 4 }}>
+              SKU对比评测
             </div>
-          </Col>
-        ))}
+            <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
+              面向商品规格、价格带与竞品特征的评测内容
+            </div>
+          </div>
+        </Col>
+        <Col xs={24} md={12}>
+          <div
+            style={{
+              padding: 16,
+              background: 'var(--bg-secondary)',
+              border: '1px solid var(--border-primary)',
+              borderRadius: 'var(--radius-md)',
+            }}
+          >
+            <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 4 }}>
+              品牌IP对比评测
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
+              面向企业品牌定位、行业特征与竞品关系的评测内容
+            </div>
+          </div>
+        </Col>
       </Row>
     </div>
   );

@@ -1,16 +1,21 @@
 'use client';
 
 import React, { useRef, useState, useEffect } from 'react';
-import { Table, Tag, Button, Modal, Empty, Space, Typography, Input, Select, message, Popconfirm, Spin } from 'antd';
+import { Table, Tag, Button, Modal, Empty, Space, Typography, Input, message, Popconfirm, Spin, Tabs, Alert } from 'antd';
 import { EyeOutlined, DeleteOutlined, SearchOutlined, CopyOutlined, DownloadOutlined, LinkOutlined } from '@ant-design/icons';
 import MarkdownPreview from '@/components/MarkdownPreview';
 import axios from 'axios';
 import { useRequireAuth } from '@/lib/useRequireAuth';
+import type { ContentMode } from '@/components/StrategySelector';
 
 const { Text } = Typography;
 
 interface Article {
     id: string;
+    mode?: ContentMode;
+    subject_id?: string | null;
+    subject_name?: string | null;
+    subject_payload?: string | null;
     product_name: string;
     product_price: number;
     product_id?: string | null;
@@ -44,15 +49,16 @@ const downloadBlob = (blob: Blob, filename: string) => {
 
 export default function HistoryPage() {
     const { loading: authLoading } = useRequireAuth();
+    const [modeFilter, setModeFilter] = useState<ContentMode>('sku');
     const [articles, setArticles] = useState<Article[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedArticle, setSelectedArticle] = useState<Article | null>(null);
     const [modalVisible, setModalVisible] = useState(false);
     const [searchText, setSearchText] = useState('');
-    const [filterStrategy, setFilterStrategy] = useState<string>('');
     const [savingUrlIds, setSavingUrlIds] = useState<Record<string, boolean>>({});
     const [savedUrlMap, setSavedUrlMap] = useState<Record<string, string>>({});
     const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+
     const pendingSaveTimersRef = useRef<Record<string, number>>({});
     const articlesRef = useRef<Article[]>([]);
     const savedUrlMapRef = useRef<Record<string, string>>({});
@@ -65,10 +71,10 @@ export default function HistoryPage() {
         savedUrlMapRef.current = savedUrlMap;
     }, [savedUrlMap]);
 
-    const fetchArticles = async () => {
+    const fetchArticles = async (mode: ContentMode = modeFilter) => {
         try {
             const response = await axios.get(`${API_BASE}/articles`, {
-                params: { strategy: filterStrategy || undefined },
+                params: { mode },
             });
             const next = (response.data.articles || []) as Article[];
             setArticles(next);
@@ -77,6 +83,7 @@ export default function HistoryPage() {
                 map[a.id] = typeof a.published_url === 'string' ? a.published_url : '';
             }
             setSavedUrlMap(map);
+            setSelectedRowKeys([]);
         } catch (error) {
             console.error('获取文章失败:', error);
             message.error('获取历史记录失败');
@@ -86,8 +93,9 @@ export default function HistoryPage() {
     };
 
     useEffect(() => {
-        fetchArticles();
-    }, [filterStrategy]);
+        setLoading(true);
+        fetchArticles(modeFilter);
+    }, [modeFilter]);
 
     const patchPublishedUrl = async (articleId: string, url: string, opts?: { silent?: boolean; keepalive?: boolean }) => {
         const lastSaved = savedUrlMapRef.current[articleId] ?? '';
@@ -102,7 +110,9 @@ export default function HistoryPage() {
                 keepalive: !!opts?.keepalive,
             });
             const contentType = res.headers.get('content-type') || '';
-            const data = contentType.includes('application/json') ? ((await res.json()) as { error?: unknown; article?: Article }) : null;
+            const data = contentType.includes('application/json')
+                ? ((await res.json()) as { error?: unknown; article?: Article })
+                : null;
             if (!res.ok) {
                 const err = data && typeof data.error === 'string' ? data.error : '';
                 if (!opts?.silent) message.error(err || '保存失败');
@@ -174,7 +184,7 @@ export default function HistoryPage() {
         try {
             await axios.delete(`${API_BASE}/articles/${id}`);
             message.success('删除成功');
-            fetchArticles();
+            fetchArticles(modeFilter);
         } catch {
             message.error('删除失败');
         }
@@ -223,6 +233,11 @@ export default function HistoryPage() {
     };
 
     const exportSelectedProducts = async () => {
+        if (modeFilter !== 'sku') {
+            message.warning('品牌IP模式记录暂不支持按 product_id 批量导出');
+            return;
+        }
+
         const selected = articles.filter((a) => selectedRowKeys.includes(a.id));
         const productIds = Array.from(new Set(selected.map((a) => a.product_id).filter((x) => typeof x === 'string' && x.trim())));
         if (productIds.length === 0) {
@@ -245,25 +260,19 @@ export default function HistoryPage() {
         }
     };
 
-    const strategyColors: Record<string, string> = {
-        comparison: 'gold',
-        persona: 'green',
-        smzdm_review: 'orange',
-        smzdm_short: 'geekblue',
-    };
-
-    const filteredArticles = articles.filter((article) =>
-        article.product_name.toLowerCase().includes(searchText.toLowerCase())
-    );
+    const filteredArticles = articles.filter((article) => {
+        const name = (article.subject_name || article.product_name || '').toLowerCase();
+        return name.includes(searchText.toLowerCase());
+    });
 
     const columns = [
         {
-            title: '商品名称',
-            dataIndex: 'product_name',
-            key: 'product_name',
-            render: (text: string) => (
+            title: modeFilter === 'sku' ? '商品名称' : '品牌IP名称',
+            dataIndex: 'subject_name',
+            key: 'subject_name',
+            render: (_: unknown, record: Article) => (
                 <Text strong style={{ color: 'var(--text-primary)' }}>
-                    {text}
+                    {record.subject_name || record.product_name}
                 </Text>
             ),
         },
@@ -271,19 +280,20 @@ export default function HistoryPage() {
             title: '价格',
             dataIndex: 'product_price',
             key: 'product_price',
-            render: (price: number) => (
-                <Text style={{ color: 'var(--accent-primary)' }}>¥{price}</Text>
-            ),
+            render: (price: number) =>
+                modeFilter === 'sku' ? (
+                    <Text style={{ color: 'var(--accent-primary)' }}>¥{price}</Text>
+                ) : (
+                    <Text style={{ color: 'var(--text-tertiary)' }}>-</Text>
+                ),
             width: 100,
         },
         {
             title: '策略',
             dataIndex: 'strategy_name',
             key: 'strategy_name',
-            render: (name: string, record: Article) => (
-                <Tag color={strategyColors[record.strategy] || 'default'}>{name}</Tag>
-            ),
-            width: 160,
+            render: (name: string) => <Tag color="gold">{name}</Tag>,
+            width: 180,
         },
         {
             title: '生成时间',
@@ -294,7 +304,7 @@ export default function HistoryPage() {
                     {new Date(time).toLocaleString('zh-CN')}
                 </Text>
             ),
-            width: 160,
+            width: 180,
         },
         {
             title: '内容发表地址URL',
@@ -357,6 +367,10 @@ export default function HistoryPage() {
                         type="text"
                         icon={<DownloadOutlined />}
                         onClick={() => {
+                            if (modeFilter !== 'sku') {
+                                message.warning('品牌IP模式记录暂不支持按 product_id 导出');
+                                return;
+                            }
                             const pid = typeof record.product_id === 'string' ? record.product_id : '';
                             if (!pid) {
                                 message.warning('该记录缺少 product_id（旧数据），请重新生成后再导出');
@@ -381,6 +395,27 @@ export default function HistoryPage() {
 
     return (
         <div style={{ maxWidth: 1200, margin: '0 auto' }}>
+            <div style={{ marginBottom: 16 }}>
+                <Tabs
+                    activeKey={modeFilter}
+                    onChange={(key) => setModeFilter(key as ContentMode)}
+                    items={[
+                        { key: 'sku', label: 'SKU历史记录' },
+                        { key: 'brand_ip', label: '品牌IP历史记录' },
+                    ]}
+                />
+            </div>
+
+            {modeFilter === 'brand_ip' && (
+                <Alert
+                    type="info"
+                    showIcon
+                    style={{ marginBottom: 16 }}
+                    message="品牌IP导出说明"
+                    description="当前导出接口仍基于SKU的 product_id。品牌IP导出将在后续里程碑升级为 subject 语义。"
+                />
+            )}
+
             <div
                 style={{
                     background: 'var(--bg-secondary)',
@@ -389,7 +424,6 @@ export default function HistoryPage() {
                     overflow: 'hidden',
                 }}
             >
-                {/* 标题栏和筛选 */}
                 <div
                     style={{
                         padding: '14px 16px',
@@ -406,37 +440,19 @@ export default function HistoryPage() {
                         历史记录
                     </Text>
                     <Space>
-                        <Button
-                            icon={<DownloadOutlined />}
-                            onClick={exportSelectedProducts}
-                            disabled={selectedRowKeys.length === 0}
-                        >
+                        <Button icon={<DownloadOutlined />} onClick={exportSelectedProducts} disabled={selectedRowKeys.length === 0}>
                             批量导出
                         </Button>
                         <Input
-                            placeholder="搜索商品名称"
+                            placeholder={modeFilter === 'sku' ? '搜索商品名称' : '搜索品牌IP名称'}
                             prefix={<SearchOutlined style={{ color: 'var(--text-tertiary)' }} />}
                             value={searchText}
                             onChange={(e) => setSearchText(e.target.value)}
                             style={{ width: 180 }}
                         />
-                        <Select
-                            placeholder="筛选策略"
-                            allowClear
-                            value={filterStrategy || undefined}
-                            onChange={setFilterStrategy}
-                            style={{ width: 140 }}
-                            options={[
-                                { value: 'comparison', label: '评测对比型' },
-                                { value: 'persona', label: '用户画像型' },
-                                { value: 'smzdm_review', label: 'SMZDM深度评测' },
-                                { value: 'smzdm_short', label: 'SMZDM短评测' },
-                            ]}
-                        />
                     </Space>
                 </div>
 
-                {/* 表格或空状态 */}
                 <div style={{ padding: 16 }}>
                     {filteredArticles.length > 0 ? (
                         <Table
@@ -453,9 +469,7 @@ export default function HistoryPage() {
                     ) : (
                         <Empty
                             description={
-                                <span style={{ color: 'var(--text-tertiary)' }}>
-                                    {loading ? '加载中...' : '暂无历史记录'}
-                                </span>
+                                <span style={{ color: 'var(--text-tertiary)' }}>{loading ? '加载中...' : '暂无历史记录'}</span>
                             }
                             style={{ padding: 60 }}
                         />
@@ -463,14 +477,11 @@ export default function HistoryPage() {
                 </div>
             </div>
 
-            {/* 详情弹窗 */}
             <Modal
                 title={
                     <Space>
-                        <Tag color={strategyColors[selectedArticle?.strategy || ''] || 'default'}>
-                            {selectedArticle?.strategy_name}
-                        </Tag>
-                        <span>{selectedArticle?.product_name}</span>
+                        <Tag color="gold">{selectedArticle?.strategy_name}</Tag>
+                        <span>{selectedArticle?.subject_name || selectedArticle?.product_name}</span>
                     </Space>
                 }
                 open={modalVisible}

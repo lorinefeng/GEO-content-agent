@@ -5,25 +5,41 @@ import { getActiveUser, unauthorized } from '@/lib/apiAuth';
 
 export const runtime = 'edge';
 
+type ContentMode = 'sku' | 'brand_ip';
+
+const parseMode = (raw: string | null): ContentMode | null => {
+  if (raw === 'sku' || raw === 'brand_ip') return raw;
+  return null;
+};
+
 export async function GET(req: NextRequest) {
   const user = await getActiveUser(req);
   if (!user) return unauthorized();
 
   const { searchParams } = new URL(req.url);
   const strategy = searchParams.get('strategy');
+  const mode = parseMode(searchParams.get('mode'));
   const db = await ensureDatabaseReady(getD1Database());
 
   try {
-    const stmt = strategy
-      ? db
-          .prepare(
-            'SELECT id, product_name, product_price, product_id, strategy, strategy_name, content, published_url, product_payload, created_at, updated_at FROM Article WHERE strategy = ? ORDER BY created_at DESC LIMIT 50'
-          )
-          .bind(strategy)
-      : db.prepare(
-          'SELECT id, product_name, product_price, product_id, strategy, strategy_name, content, published_url, product_payload, created_at, updated_at FROM Article ORDER BY created_at DESC LIMIT 50'
-        );
+    const baseSelect =
+      'SELECT id, mode, subject_id, subject_name, subject_payload, product_name, product_price, product_id, strategy, strategy_name, content, published_url, product_payload, research_snapshot_id, created_at, updated_at FROM Article';
 
+    let query = `${baseSelect} ORDER BY created_at DESC LIMIT 50`;
+    const binds: string[] = [];
+
+    if (mode && strategy) {
+      query = `${baseSelect} WHERE mode = ? AND strategy = ? ORDER BY created_at DESC LIMIT 50`;
+      binds.push(mode, strategy);
+    } else if (mode) {
+      query = `${baseSelect} WHERE mode = ? ORDER BY created_at DESC LIMIT 50`;
+      binds.push(mode);
+    } else if (strategy) {
+      query = `${baseSelect} WHERE strategy = ? ORDER BY created_at DESC LIMIT 50`;
+      binds.push(strategy);
+    }
+
+    const stmt = db.prepare(query).bind(...binds);
     const result = await stmt.all();
     const articles = result?.results ?? [];
     return NextResponse.json({ articles, total: articles.length });
@@ -41,6 +57,10 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = (await req.json()) as {
+      mode?: unknown;
+      subject_id?: unknown;
+      subject_name?: unknown;
+      subject_payload?: unknown;
       product_name?: unknown;
       product_price?: unknown;
       product_id?: unknown;
@@ -49,24 +69,40 @@ export async function POST(req: NextRequest) {
       strategy_name?: unknown;
       content?: unknown;
       published_url?: unknown;
+      research_snapshot_id?: unknown;
     };
 
-    const product_name = typeof body.product_name === 'string' ? body.product_name : '';
+    const mode = body.mode === 'brand_ip' ? 'brand_ip' : 'sku';
     const strategy = typeof body.strategy === 'string' ? body.strategy : '';
     const strategy_name = typeof body.strategy_name === 'string' ? body.strategy_name : '';
     const content = typeof body.content === 'string' ? body.content : '';
-    const product_id = typeof body.product_id === 'string' ? body.product_id : '';
-    const product_payload = typeof body.product_payload === 'string' ? body.product_payload : '';
+
+    const subject_id = typeof body.subject_id === 'string' ? body.subject_id : '';
+    const subject_name = typeof body.subject_name === 'string' ? body.subject_name : '';
+    const subject_payload = typeof body.subject_payload === 'string' ? body.subject_payload : '';
+
+    const product_name_raw = typeof body.product_name === 'string' ? body.product_name : '';
+    const product_name = product_name_raw || subject_name;
+
+    const product_id_raw = typeof body.product_id === 'string' ? body.product_id : '';
+    const product_id = product_id_raw || subject_id;
+
+    const product_payload_raw = typeof body.product_payload === 'string' ? body.product_payload : '';
+    const product_payload = product_payload_raw || subject_payload;
+
     const published_url = typeof body.published_url === 'string' ? body.published_url : '';
+    const research_snapshot_id = typeof body.research_snapshot_id === 'string' ? body.research_snapshot_id : '';
+
     const priceRaw = body.product_price;
-    const price =
+    const parsedPrice =
       typeof priceRaw === 'number'
         ? priceRaw
         : typeof priceRaw === 'string'
-          ? parseFloat(priceRaw)
+          ? Number.parseFloat(priceRaw)
           : NaN;
+    const product_price = Number.isFinite(parsedPrice) ? parsedPrice : mode === 'brand_ip' ? 0 : NaN;
 
-    if (!product_name || !strategy || !strategy_name || !content || !Number.isFinite(price)) {
+    if (!product_name || !strategy || !strategy_name || !content || !Number.isFinite(product_price)) {
       return NextResponse.json({ error: '参数不合法' }, { status: 400 });
     }
 
@@ -74,14 +110,35 @@ export async function POST(req: NextRequest) {
 
     await db
       .prepare(
-        'INSERT INTO Article (id, product_name, product_price, product_id, strategy, strategy_name, content, published_url, product_payload, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime(\'now\'), datetime(\'now\'))'
+        `INSERT INTO Article (
+          id, mode, subject_id, subject_name, subject_payload,
+          product_name, product_price, product_id,
+          strategy, strategy_name, content,
+          published_url, product_payload, research_snapshot_id,
+          created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`
       )
-      .bind(id, product_name, price, product_id || null, strategy, strategy_name, content, published_url || null, product_payload || null)
+      .bind(
+        id,
+        mode,
+        subject_id || null,
+        subject_name || product_name,
+        subject_payload || null,
+        product_name,
+        product_price,
+        product_id || null,
+        strategy,
+        strategy_name,
+        content,
+        published_url || null,
+        product_payload || null,
+        research_snapshot_id || null
+      )
       .run();
 
     const created = await db
       .prepare(
-        'SELECT id, product_name, product_price, product_id, strategy, strategy_name, content, published_url, product_payload, created_at, updated_at FROM Article WHERE id = ?'
+        'SELECT id, mode, subject_id, subject_name, subject_payload, product_name, product_price, product_id, strategy, strategy_name, content, published_url, product_payload, research_snapshot_id, created_at, updated_at FROM Article WHERE id = ?'
       )
       .bind(id)
       .first();

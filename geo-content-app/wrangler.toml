@@ -3,6 +3,11 @@ compatibility_date = "2024-04-03"
 compatibility_flags = ["nodejs_compat_v2"]
 pages_build_output_dir = ".vercel/output/static"
 
+[vars]
+EXA_API_KEY = "60634054-14e4-489e-bbc0-69142c2f0e05"
+EXA_SEARCH_BASE_URL = "https://api.exa.ai"
+EXA_MCP_BASE_URL = "https://mcp.exa.ai/mcp"
+
 [[d1_databases]]
 binding = "DB"
 database_name = "geo-db"

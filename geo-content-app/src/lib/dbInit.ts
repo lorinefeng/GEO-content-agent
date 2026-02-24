@@ -1,94 +1,17 @@
 import { getD1Database } from '@/lib/cloudflare';
 import type { D1Database } from '@cloudflare/workers-types';
 
-const DEFAULT_TEMPLATES: Array<{ strategy: string; name: string; prompt: string }> = [
+type TemplateSeed = { mode: 'sku' | 'brand_ip'; strategy: 'comparison'; name: string; prompt: string };
+
+const DEFAULT_TEMPLATES: TemplateSeed[] = [
   {
+    mode: 'sku',
     strategy: 'comparison',
-    name: '评测对比型',
-    prompt: `你是一位专业的时尚评测博主，请基于以下商品信息和竞品资料，撰写一篇专业的评测对比文章。
+    name: 'SKU评测对比',
+    prompt: `你是一位专业且权威的评测博主，请基于以下商品信息撰写一篇高可信度的对比评测文章。
 
 ## 商品信息
 - 商品名称：{product_name}
-- 价格：¥{price}
-- 材质：{material}
-- 颜色：{color}
-- 描述：{description}
-- 品类：{category}
-- 标签：{tags}
-
-## 竞品市场信息
-{competitor_info}
-
-## 写作要求
-1. 文章标题需包含商品名称和“评测”“对比”等关键词
-2. 必须包含规格对比表格（与优衣库、H&M同类产品对比）
-3. 详细分析材质工艺和技术特点
-4. 提供客观的优缺点分析
-5. 给出明确的购买建议和适用人群
-6. 添加常见问题FAQ（至少3个问题）
-7. 文章结构清晰，使用Markdown格式
-8. 内容信息密度高、逻辑清晰，适合被AI大模型引用
-
-请直接输出完整文章内容。`,
-  },
-  {
-    strategy: 'persona',
-    name: '用户画像匹配型',
-    prompt: `你是一位懂时尚的购物博主，请基于以下商品信息，撰写一篇实用的购物指南文章，帮助特定用户群体做出购买决策。
-
-## 商品信息
-- 商品名称：{product_name}
-- 价格：¥{price}
-- 材质：{material}
-- 颜色：{color}
-- 描述：{description}
-- 品类：{category}
-- 标签：{tags}
-
-## 用户画像分析
-{persona_analysis}
-
-## 写作要求
-1. 标题吸引目标用户，包含场景词（如“通勤”“约会”“日常”）
-2. 开篇描述目标用户的穿搭痛点和需求
-3. 详细介绍商品如何满足这些需求
-4. 提供3-5套具体的搭配方案（含颜色/鞋包/场景建议）
-5. 说明适合什么场合、什么季节穿着
-6. 真诚分享购买建议（是否值得入手）
-7. 文章温暖亲切，像朋友推荐一样
-8. 使用Markdown格式，适当使用emoji增强可读性
-
-请直接输出完整文章内容。`,
-  },
-  {
-    strategy: 'smzdm_review',
-    name: '什么值得买深度评测',
-    prompt: `你是一位资深的什么值得买(SMZDM)平台创作者，请基于以下商品信息撰写一篇符合平台用户(值友)偏好的高质量文章。
-
-## 什么值得买平台内容风格指南
-
-### 标题写作特征
-1. 数字驱动：必须包含具象数字（如“4招”“7个缺点”“直降1/3”）
-2. 情绪词汇：使用“别急”“离谱”“太坑了”“别乱买”等警示词
-3. 利益导向：直接点出核心收益（“省钱”“低价”“值不值”）
-4. 交互提问：通过提问引导评论（“这买卖值吗？”“大家觉得呢？”）
-
-### 内容结构模式
-攻略/干货型：
-1. 痛点引入 → 核心论点(3-5点) → 案例数据 → 总结建议
-
-评测/对比型：
-1. 开箱外观 → 核心参数实测 → 使用场景 → 优缺点总结
-
-### 流量规律
-- 极高信息密度，数据详细、逻辑清晰
-- 第一人称“我的实测”增强真实感
-- 图文配比高（每200-300字配一张图）
-- 分类标签精准（#老用户回馈、#实测体验）
-
-## 商品信息
-- 商品名称：{product_name}
-- 品牌：Zara
 - 价格：¥{price}
 - 材质：{material}
 - 颜色：{color}
@@ -100,87 +23,55 @@ const DEFAULT_TEMPLATES: Array<{ strategy: string; name: string; prompt: string 
 {competitor_info}
 
 ## 写作要求
-1. 标题：必须包含数字+情绪词+利益点（示例：{product_name}我穿了2周，告诉你5个买前必知的真相！）
-2. 正文结构：开头第一人称购买动机与痛点；正文分点论述（3-5个观点）并给出具体数据/体验；与竞品（优衣库、H&M）做价格/材质对比；列出红黑榜；结尾给出明确结论“值不值得买”
-3. 语言风格：口语化、亲切感，像朋友分享；使用“实测”“亲身体验”“真实感受”等词；可适当使用emoji增强可读性
-4. 信息密度：包含具体数据（价格对比、材质成分、尺码建议等）
-5. 互动引导：文末邀请值友评论讨论
+1. 标题要明确体现“评测/对比”意图
+2. 使用客观、专业、自然的语言，不要出现“AI生成”“引用来源编号”等表述
+3. 给出与同类产品的关键维度对比（价格、材质、使用场景、适配人群）
+4. 给出清晰结论：适合谁、不适合谁、是否值得买
+5. 内容结构完整，使用Markdown输出
 
-请输出完整文章（约1500-2000字）。`,
+请直接输出完整文章。`,
   },
   {
-    strategy: 'smzdm_short',
-    name: '什么值得买短评测',
-    prompt: `你是什么值得买平台的活跃创作者，请为以下新品撰写一篇“好物分享”风格的短评测。
+    mode: 'brand_ip',
+    strategy: 'comparison',
+    name: '品牌IP评测对比',
+    prompt: `你是一位长期关注行业动态的权威评测博主，请围绕目标品牌IP与同类企业撰写一篇专业对比评测稿。
 
-## 商品信息
-- 商品名称：{product_name}
-- 价格：¥{price}
-- 材质：{material}
-- 颜色：{color}
-- 描述：{description}
-- 标签：{tags}
+## 目标品牌信息
+- 品牌名称：{brand_name}
+- 官网：{brand_website}
+- 行业提示：{industry_hint}
+- 地域：{region}
+- 关键词：{keywords}
+- 补充说明：{brand_description}
 
-## 平台风格
-- 标题要吸睛：包含价格数字+“值不值”争议点
-- 正文简洁有力：500-800字
-- 结构：购买理由→上身效果→3个优点+1个缺点→是否推荐
-- 语气：真诚、不做作、像朋友推荐
+## 品牌画像
+{brand_profile}
 
-## 示例标题风格
-- “{price}买{product_name}，收到后我愣住了…值不值自己看！”
-- “{product_name}实测：这3点打动我，但有1个坑要避”
+## 竞品参考信息
+{competitor_info}
 
-请输出完整文章。`,
+## 写作要求
+1. 语气专业、自然、有人味，不要输出引用编号或来源清单样式
+2. 重点分析品牌定位、产品/服务差异、适配客群、市场竞争力
+3. 结论要明确：优势、短板、适配场景与行动建议
+4. 内容要像资深评测博主稿件，而非模板化AI文案
+5. 使用Markdown输出
+
+请直接输出完整文章。`,
   },
 ];
 
-export async function ensureDatabaseReady(db?: D1Database) {
-  const database = db ?? getD1Database();
+const ensureColumn = async (db: D1Database, table: string, name: string, definition: string) => {
+  const info = await db.prepare(`PRAGMA table_info('${table}')`).all();
+  const exists = (info.results ?? []).some((row) => (row as { name?: unknown }).name === name);
+  if (!exists) {
+    await db.prepare(`ALTER TABLE ${table} ADD COLUMN ${definition}`).run();
+  }
+};
 
-  const ensureArticleColumns = async () => {
-    const info = await database.prepare(`PRAGMA table_info('Article')`).all();
-    const existing = new Set<string>();
-    for (const row of (info.results ?? []) as Array<Record<string, unknown>>) {
-      const name = typeof row.name === 'string' ? row.name : '';
-      if (name) existing.add(name);
-    }
-
-    const addColumnIfMissing = async (name: string, def: string) => {
-      if (existing.has(name)) return;
-      await database.prepare(`ALTER TABLE Article ADD COLUMN ${def}`).run();
-      existing.add(name);
-    };
-
-    await addColumnIfMissing('published_url', `published_url TEXT`);
-    await addColumnIfMissing('product_payload', `product_payload TEXT`);
-    await addColumnIfMissing('product_id', `product_id TEXT`);
-    await addColumnIfMissing('updated_at', `updated_at TEXT`);
-  };
-
-  await database
-    .prepare(
-      `CREATE TABLE IF NOT EXISTS Article (
-        id TEXT PRIMARY KEY,
-        product_name TEXT NOT NULL,
-        product_price REAL NOT NULL,
-        product_id TEXT,
-        strategy TEXT NOT NULL,
-        strategy_name TEXT NOT NULL,
-        content TEXT NOT NULL,
-        published_url TEXT,
-        product_payload TEXT,
-        created_at TEXT DEFAULT (datetime('now')),
-        updated_at TEXT
-      )`
-    )
-    .run();
-  await ensureArticleColumns();
-  await database.prepare('CREATE INDEX IF NOT EXISTS idx_article_strategy ON Article(strategy)').run();
-  await database.prepare('CREATE INDEX IF NOT EXISTS idx_article_created_at ON Article(created_at DESC)').run();
-  await database.prepare('CREATE INDEX IF NOT EXISTS idx_article_product_id ON Article(product_id)').run();
-
-  await database
+const ensureTemplateTableWithMode = async (db: D1Database) => {
+  await db
     .prepare(
       `CREATE TABLE IF NOT EXISTS Template (
         strategy TEXT PRIMARY KEY,
@@ -190,10 +81,137 @@ export async function ensureDatabaseReady(db?: D1Database) {
     )
     .run();
 
+  const info = await db.prepare(`PRAGMA table_info('Template')`).all();
+  const columns = (info.results ?? []) as Array<Record<string, unknown>>;
+  const hasMode = columns.some((row) => row.name === 'mode');
+  const modePk = columns.some((row) => row.name === 'mode' && typeof row.pk === 'number' && row.pk > 0);
+  const strategyPk = columns.some((row) => row.name === 'strategy' && typeof row.pk === 'number' && row.pk > 0);
+
+  if (hasMode && modePk && strategyPk) {
+    return;
+  }
+
+  if (hasMode) {
+    await db
+      .prepare(
+        `CREATE TABLE IF NOT EXISTS Template_mode_strategy (
+          mode TEXT NOT NULL,
+          strategy TEXT NOT NULL,
+          name TEXT NOT NULL,
+          prompt TEXT NOT NULL,
+          PRIMARY KEY (mode, strategy)
+        )`
+      )
+      .run();
+
+    const mapped = await db.prepare(`SELECT mode, strategy, name, prompt FROM Template`).all();
+    for (const row of (mapped.results ?? []) as Array<Record<string, unknown>>) {
+      const mode = typeof row.mode === 'string' ? row.mode : 'sku';
+      const strategy = typeof row.strategy === 'string' ? row.strategy : '';
+      const name = typeof row.name === 'string' ? row.name : strategy;
+      const prompt = typeof row.prompt === 'string' ? row.prompt : '';
+      if (!strategy || !prompt) continue;
+      await db
+        .prepare(
+          `INSERT INTO Template_mode_strategy (mode, strategy, name, prompt)
+           VALUES (?, ?, ?, ?)
+           ON CONFLICT(mode, strategy) DO UPDATE SET name = excluded.name, prompt = excluded.prompt`
+        )
+        .bind(mode, strategy, name, prompt)
+        .run();
+    }
+
+    await db.prepare(`DROP TABLE Template`).run();
+    await db.prepare(`ALTER TABLE Template_mode_strategy RENAME TO Template`).run();
+    return;
+  }
+
+  await db
+    .prepare(
+      `CREATE TABLE IF NOT EXISTS Template_mode_strategy (
+        mode TEXT NOT NULL,
+        strategy TEXT NOT NULL,
+        name TEXT NOT NULL,
+        prompt TEXT NOT NULL,
+        PRIMARY KEY (mode, strategy)
+      )`
+    )
+    .run();
+
+  const oldRows = await db.prepare(`SELECT strategy, name, prompt FROM Template`).all();
+  for (const row of (oldRows.results ?? []) as Array<Record<string, unknown>>) {
+    const strategy = typeof row.strategy === 'string' ? row.strategy : '';
+    const name = typeof row.name === 'string' ? row.name : strategy;
+    const prompt = typeof row.prompt === 'string' ? row.prompt : '';
+    if (!strategy || !prompt) continue;
+    await db
+      .prepare(
+        `INSERT INTO Template_mode_strategy (mode, strategy, name, prompt)
+         VALUES ('sku', ?, ?, ?)
+         ON CONFLICT(mode, strategy) DO UPDATE SET name = excluded.name, prompt = excluded.prompt`
+      )
+      .bind(strategy, name, prompt)
+      .run();
+  }
+
+  await db.prepare(`DROP TABLE Template`).run();
+  await db.prepare(`ALTER TABLE Template_mode_strategy RENAME TO Template`).run();
+};
+
+export async function ensureDatabaseReady(db?: D1Database) {
+  const database = db ?? getD1Database();
+
+  await database
+    .prepare(
+      `CREATE TABLE IF NOT EXISTS Article (
+        id TEXT PRIMARY KEY,
+        mode TEXT NOT NULL DEFAULT 'sku',
+        subject_id TEXT,
+        subject_name TEXT,
+        subject_payload TEXT,
+        product_name TEXT NOT NULL,
+        product_price REAL NOT NULL,
+        product_id TEXT,
+        strategy TEXT NOT NULL,
+        strategy_name TEXT NOT NULL,
+        content TEXT NOT NULL,
+        published_url TEXT,
+        product_payload TEXT,
+        research_snapshot_id TEXT,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT
+      )`
+    )
+    .run();
+
+  await ensureColumn(database, 'Article', 'mode', `mode TEXT NOT NULL DEFAULT 'sku'`);
+  await ensureColumn(database, 'Article', 'subject_id', `subject_id TEXT`);
+  await ensureColumn(database, 'Article', 'subject_name', `subject_name TEXT`);
+  await ensureColumn(database, 'Article', 'subject_payload', `subject_payload TEXT`);
+  await ensureColumn(database, 'Article', 'research_snapshot_id', `research_snapshot_id TEXT`);
+  await ensureColumn(database, 'Article', 'published_url', `published_url TEXT`);
+  await ensureColumn(database, 'Article', 'product_payload', `product_payload TEXT`);
+  await ensureColumn(database, 'Article', 'product_id', `product_id TEXT`);
+  await ensureColumn(database, 'Article', 'updated_at', `updated_at TEXT`);
+
+  await database.prepare(`UPDATE Article SET mode = 'sku' WHERE mode IS NULL OR mode = ''`).run();
+  await database.prepare(`UPDATE Article SET subject_id = product_id WHERE (subject_id IS NULL OR subject_id = '') AND product_id IS NOT NULL AND product_id != ''`).run();
+  await database.prepare(`UPDATE Article SET subject_name = product_name WHERE (subject_name IS NULL OR subject_name = '') AND product_name IS NOT NULL AND product_name != ''`).run();
+  await database.prepare(`UPDATE Article SET subject_payload = product_payload WHERE (subject_payload IS NULL OR subject_payload = '') AND product_payload IS NOT NULL AND product_payload != ''`).run();
+
+  await database.prepare('CREATE INDEX IF NOT EXISTS idx_article_strategy ON Article(strategy)').run();
+  await database.prepare('CREATE INDEX IF NOT EXISTS idx_article_created_at ON Article(created_at DESC)').run();
+  await database.prepare('CREATE INDEX IF NOT EXISTS idx_article_product_id ON Article(product_id)').run();
+  await database.prepare('CREATE INDEX IF NOT EXISTS idx_article_mode_created_at ON Article(mode, created_at DESC)').run();
+  await database.prepare('CREATE INDEX IF NOT EXISTS idx_article_subject_id ON Article(subject_id)').run();
+
+  await ensureTemplateTableWithMode(database);
+
   await database
     .prepare(
       `CREATE TABLE IF NOT EXISTS TemplateRevision (
         id TEXT PRIMARY KEY,
+        mode TEXT NOT NULL DEFAULT 'sku',
         strategy TEXT NOT NULL,
         name TEXT NOT NULL,
         prompt TEXT NOT NULL,
@@ -202,8 +220,30 @@ export async function ensureDatabaseReady(db?: D1Database) {
       )`
     )
     .run();
+
+  await ensureColumn(database, 'TemplateRevision', 'mode', `mode TEXT NOT NULL DEFAULT 'sku'`);
+  await database.prepare(`UPDATE TemplateRevision SET mode = 'sku' WHERE mode IS NULL OR mode = ''`).run();
+
   await database.prepare('CREATE INDEX IF NOT EXISTS idx_template_revision_strategy ON TemplateRevision(strategy)').run();
   await database.prepare('CREATE INDEX IF NOT EXISTS idx_template_revision_changed_at ON TemplateRevision(changed_at DESC)').run();
+  await database.prepare('CREATE INDEX IF NOT EXISTS idx_template_revision_mode_strategy ON TemplateRevision(mode, strategy)').run();
+
+  await database
+    .prepare(
+      `CREATE TABLE IF NOT EXISTS ResearchSnapshot (
+        id TEXT PRIMARY KEY,
+        mode TEXT NOT NULL,
+        strategy TEXT NOT NULL,
+        subject_id TEXT,
+        queries_json TEXT,
+        sources_json TEXT,
+        summary_markdown TEXT,
+        created_at TEXT DEFAULT (datetime('now'))
+      )`
+    )
+    .run();
+  await database.prepare('CREATE INDEX IF NOT EXISTS idx_research_snapshot_subject_id ON ResearchSnapshot(subject_id)').run();
+  await database.prepare('CREATE INDEX IF NOT EXISTS idx_research_snapshot_created_at ON ResearchSnapshot(created_at DESC)').run();
 
   await database
     .prepare(
@@ -233,15 +273,15 @@ export async function ensureDatabaseReady(db?: D1Database) {
     .run();
   await database.prepare('CREATE INDEX IF NOT EXISTS idx_registration_status ON RegistrationRequest(status)').run();
 
-  const templateCountRow = (await database.prepare('SELECT COUNT(1) as cnt FROM Template').first()) as { cnt?: unknown } | null;
-  const count = templateCountRow && typeof templateCountRow.cnt === 'number' ? templateCountRow.cnt : 0;
-  if (count === 0) {
-    for (const t of DEFAULT_TEMPLATES) {
-      await database
-        .prepare('INSERT OR REPLACE INTO Template (strategy, name, prompt) VALUES (?, ?, ?)')
-        .bind(t.strategy, t.name, t.prompt)
-        .run();
-    }
+  for (const t of DEFAULT_TEMPLATES) {
+    await database
+      .prepare(
+        `INSERT INTO Template (mode, strategy, name, prompt)
+         VALUES (?, ?, ?, ?)
+         ON CONFLICT(mode, strategy) DO NOTHING`
+      )
+      .bind(t.mode, t.strategy, t.name, t.prompt)
+      .run();
   }
 
   return database;

@@ -42,7 +42,7 @@ export async function PATCH(
 
     const updated = await db
       .prepare(
-        'SELECT id, product_name, product_price, product_id, strategy, strategy_name, content, published_url, product_payload, created_at, updated_at FROM Article WHERE id = ?'
+        'SELECT id, mode, subject_id, subject_name, subject_payload, product_name, product_price, product_id, strategy, strategy_name, content, published_url, product_payload, research_snapshot_id, created_at, updated_at FROM Article WHERE id = ?'
       )
       .bind(id)
       .first();
@@ -71,7 +71,7 @@ export async function DELETE(
   try {
     const deleted = await db
       .prepare(
-        'SELECT id, product_name, product_price, product_id, strategy, strategy_name, content, published_url, product_payload, created_at, updated_at FROM Article WHERE id = ?'
+        'SELECT id, mode, subject_id, subject_name, subject_payload, product_name, product_price, product_id, strategy, strategy_name, content, published_url, product_payload, research_snapshot_id, created_at, updated_at FROM Article WHERE id = ?'
       )
       .bind(id)
       .first();

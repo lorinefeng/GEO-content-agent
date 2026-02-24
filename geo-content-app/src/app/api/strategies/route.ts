@@ -1,30 +1,29 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 
 export const runtime = 'edge';
 
-export async function GET() {
-    return NextResponse.json({
-        strategies: [
-            {
-                id: 'comparison',
-                name: '评测对比型',
-                description: '专业评测对比，包含规格表格和竞品分析',
-            },
-            {
-                id: 'persona',
-                name: '用户画像匹配型',
-                description: '面向特定用户群体的购物指南',
-            },
-            {
-                id: 'smzdm_review',
-                name: '什么值得买深度评测',
-                description: '符合SMZDM平台风格的深度评测',
-            },
-            {
-                id: 'smzdm_short',
-                name: '什么值得买短评测',
-                description: '简洁的好物分享风格',
-            },
-        ],
-    });
+type ContentMode = 'sku' | 'brand_ip';
+
+const parseMode = (raw: string | null): ContentMode => {
+  return raw === 'brand_ip' ? 'brand_ip' : 'sku';
+};
+
+export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url);
+  const mode = parseMode(searchParams.get('mode'));
+
+  return NextResponse.json({
+    mode,
+    strategies: [
+      {
+        id: 'comparison',
+        name: mode === 'brand_ip' ? '品牌IP对比评测' : 'SKU对比评测',
+        description:
+          mode === 'brand_ip'
+            ? '聚焦品牌IP与同类企业的行业对比与竞争力评测'
+            : '围绕商品规格、价格带与竞品进行专业对比评测（已接入Exa联网检索）',
+        requires_research: true,
+      },
+    ],
+  });
 }
