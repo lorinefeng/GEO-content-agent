@@ -267,6 +267,26 @@ export async function ensureDatabaseReady(db?: D1Database) {
 
   await database
     .prepare(
+      `CREATE TABLE IF NOT EXISTS ReferenceImageAsset (
+        id TEXT PRIMARY KEY,
+        article_id TEXT,
+        subject_id TEXT,
+        mode TEXT NOT NULL,
+        source_type TEXT NOT NULL,
+        origin_name TEXT,
+        mime_type TEXT,
+        public_url TEXT NOT NULL,
+        r2_key TEXT,
+        created_at TEXT DEFAULT (datetime('now'))
+      )`
+    )
+    .run();
+  await database.prepare('CREATE INDEX IF NOT EXISTS idx_reference_image_article_id ON ReferenceImageAsset(article_id)').run();
+  await database.prepare('CREATE INDEX IF NOT EXISTS idx_reference_image_subject_id ON ReferenceImageAsset(subject_id)').run();
+  await database.prepare('CREATE INDEX IF NOT EXISTS idx_reference_image_created_at ON ReferenceImageAsset(created_at DESC)').run();
+
+  await database
+    .prepare(
       `CREATE TABLE IF NOT EXISTS User (
         id TEXT PRIMARY KEY,
         username TEXT NOT NULL UNIQUE,

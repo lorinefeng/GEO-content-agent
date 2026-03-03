@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getD1Database } from '@/lib/cloudflare';
+import { getAssetsBucket, getD1Database } from '@/lib/cloudflare';
 import { ensureDatabaseReady } from '@/lib/dbInit';
 import { getActiveUser, unauthorized } from '@/lib/apiAuth';
 
@@ -94,7 +94,27 @@ export async function DELETE(
       .bind(id)
       .first();
 
+    const refRows = await db
+      .prepare(`SELECT r2_key FROM ReferenceImageAsset WHERE article_id = ? AND r2_key IS NOT NULL AND r2_key != ''`)
+      .bind(id)
+      .all();
+
+    await db.prepare('DELETE FROM ReferenceImageAsset WHERE article_id = ?').bind(id).run();
+
     await db.prepare('DELETE FROM Article WHERE id = ?').bind(id).run();
+
+    const keys = (refRows.results ?? [])
+      .map((row) => (row as { r2_key?: unknown }).r2_key)
+      .filter((item): item is string => typeof item === 'string' && item.trim().length > 0);
+
+    if (keys.length > 0) {
+      try {
+        const bucket = getAssetsBucket();
+        await Promise.all(keys.map((key) => bucket.delete(key)));
+      } catch {
+        // R2 binding may be absent in some environments; DB deletion remains authoritative.
+      }
+    }
 
     return NextResponse.json({ success: true, deleted });
   } catch (error) {

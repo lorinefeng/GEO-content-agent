@@ -78,6 +78,7 @@ export async function POST(req: NextRequest) {
       content?: unknown;
       published_url?: unknown;
       research_snapshot_id?: unknown;
+      reference_images?: unknown;
     };
 
     const mode = body.mode === 'brand_ip' ? 'brand_ip' : 'sku';
@@ -100,6 +101,22 @@ export async function POST(req: NextRequest) {
 
     const published_url = typeof body.published_url === 'string' ? body.published_url : '';
     const research_snapshot_id = typeof body.research_snapshot_id === 'string' ? body.research_snapshot_id : '';
+    const referenceImages = Array.isArray(body.reference_images)
+      ? body.reference_images
+          .map((item) => {
+            if (!item || typeof item !== 'object') return null;
+            const row = item as Record<string, unknown>;
+            const public_url = typeof row.public_url === 'string' ? row.public_url.trim() : typeof row.url === 'string' ? row.url.trim() : '';
+            if (!/^https?:\/\//i.test(public_url)) return null;
+            const source_type = row.source_type === 'upload' ? 'upload' : 'url';
+            const origin_name = typeof row.origin_name === 'string' ? row.origin_name : '';
+            const mime_type = typeof row.mime_type === 'string' ? row.mime_type : '';
+            const r2_key = typeof row.r2_key === 'string' ? row.r2_key : '';
+            return { public_url, source_type, origin_name, mime_type, r2_key };
+          })
+          .filter((item): item is { public_url: string; source_type: 'upload' | 'url'; origin_name: string; mime_type: string; r2_key: string } => Boolean(item))
+          .slice(0, 5)
+      : [];
 
     const priceRaw = body.product_price;
     const parsedPrice =
@@ -143,6 +160,27 @@ export async function POST(req: NextRequest) {
         research_snapshot_id || null
       )
       .run();
+
+    for (const image of referenceImages) {
+      await db
+        .prepare(
+          `INSERT INTO ReferenceImageAsset (
+            id, article_id, subject_id, mode, source_type, origin_name, mime_type, public_url, r2_key, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`
+        )
+        .bind(
+          crypto.randomUUID(),
+          id,
+          subject_id || product_id || null,
+          mode,
+          image.source_type,
+          image.origin_name || null,
+          image.mime_type || null,
+          image.public_url,
+          image.r2_key || null
+        )
+        .run();
+    }
 
     const created = await db
       .prepare(

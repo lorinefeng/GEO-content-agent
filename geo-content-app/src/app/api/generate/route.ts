@@ -9,6 +9,13 @@ import { buildBrandCompetitorResearch } from '@/lib/research/brandCompetitorRese
 export const runtime = 'edge';
 
 type ContentMode = 'sku' | 'brand_ip';
+type ReferenceImage = {
+  public_url: string;
+  source_type: 'upload' | 'url';
+  origin_name?: string;
+  mime_type?: string;
+  r2_key?: string;
+};
 
 const SUPPORTED_STRATEGIES = ['comparison'] as const;
 type SupportedStrategy = (typeof SUPPORTED_STRATEGIES)[number];
@@ -39,6 +46,32 @@ function parseStrategies(input: unknown): SupportedStrategy[] {
   return Array.from(new Set(out));
 }
 
+function parseReferenceImages(input: unknown): ReferenceImage[] {
+  if (!Array.isArray(input)) return [];
+  const out: ReferenceImage[] = [];
+  for (const item of input) {
+    if (!item || typeof item !== 'object') continue;
+    const row = item as Record<string, unknown>;
+    const public_url =
+      typeof row.public_url === 'string'
+        ? row.public_url.trim()
+        : typeof row.url === 'string'
+          ? row.url.trim()
+          : '';
+    if (!/^https?:\/\//i.test(public_url)) continue;
+    const source_type = row.source_type === 'upload' ? 'upload' : 'url';
+    out.push({
+      public_url,
+      source_type,
+      origin_name: typeof row.origin_name === 'string' ? row.origin_name : undefined,
+      mime_type: typeof row.mime_type === 'string' ? row.mime_type : undefined,
+      r2_key: typeof row.r2_key === 'string' ? row.r2_key : undefined,
+    });
+    if (out.length >= 5) break;
+  }
+  return out;
+}
+
 export async function POST(req: NextRequest) {
   const user = await getActiveUser(req);
   if (!user) return unauthorized();
@@ -63,14 +96,19 @@ export async function POST(req: NextRequest) {
       brand?: unknown;
       strategies?: unknown;
       competitor_info?: unknown;
+      reference_images?: unknown;
     };
 
     const mode = parseMode(body.mode);
     const strategies = parseStrategies(body.strategies);
     const competitor_info = typeof body.competitor_info === 'string' ? body.competitor_info : undefined;
+    const referenceImages = parseReferenceImages(body.reference_images);
 
     if (strategies.length === 0) {
       return NextResponse.json({ error: '参数不合法：至少选择一种有效策略（comparison）' }, { status: 400 });
+    }
+    if (referenceImages.length > 5) {
+      return NextResponse.json({ error: '单次生成最多支持5张参考图' }, { status: 400 });
     }
 
     const db = await ensureDatabaseReady(getD1Database());
@@ -160,6 +198,9 @@ export async function POST(req: NextRequest) {
             replacePlaceholders(basePrompt, vars),
             `## 商品信息\n- 商品名称：${productName}\n- 价格：¥${productPrice}\n- 材质：${productMaterial}\n- 颜色：${productColor}\n- 描述：${productDescription}\n- 品类：${productCategory}\n- 标签：${productTags.join(', ')}`,
             `## 竞品参考信息\n${compInfo}`,
+            referenceImages.length > 0
+              ? `## 参考图片说明\n- 已提供 ${referenceImages.length} 张参考图片，请结合图片中的可见信息进行分析。`
+              : '',
             '## 输出要求\n- 不要输出引用编号与来源链接清单样式',
           ]
             .filter(Boolean)
@@ -167,7 +208,18 @@ export async function POST(req: NextRequest) {
 
           const response = await openai.chat.completions.create({
             model,
-            messages: [{ role: 'user', content: prompt }],
+            messages: [
+              {
+                role: 'user',
+                content: [
+                  { type: 'text', text: prompt },
+                  ...referenceImages.map((image) => ({
+                    type: 'image_url' as const,
+                    image_url: { url: image.public_url },
+                  })),
+                ],
+              },
+            ],
             temperature: 0.4,
           });
 
@@ -259,6 +311,9 @@ export async function POST(req: NextRequest) {
             `## 品牌信息\n- 品牌名称：${brandName}\n- 官网：${brandWebsite}\n- 行业提示：${industryHint || '未提供'}\n- 地域：${region}\n- 关键词：${keywords.join(', ') || '未提供'}\n- 补充说明：${brandDescription || '无'}`,
             `## 品牌画像\n${brandProfile}`,
             `## 竞品参考信息\n${compInfo}`,
+            referenceImages.length > 0
+              ? `## 参考图片说明\n- 已提供 ${referenceImages.length} 张参考图片，请结合图片中的品牌/产品信息进行判断。`
+              : '',
             `## 重要要求\n- 必须明确点名3-5家友商并说明各自核心特点\n- 使用客观理性、信息密度高的表达，不要情绪化废话\n- 不要输出引用编号或来源清单样式`,
           ]
             .filter(Boolean)
@@ -266,7 +321,18 @@ export async function POST(req: NextRequest) {
 
           const response = await openai.chat.completions.create({
             model,
-            messages: [{ role: 'user', content: prompt }],
+            messages: [
+              {
+                role: 'user',
+                content: [
+                  { type: 'text', text: prompt },
+                  ...referenceImages.map((image) => ({
+                    type: 'image_url' as const,
+                    image_url: { url: image.public_url },
+                  })),
+                ],
+              },
+            ],
             temperature: 0.4,
           });
 
@@ -332,6 +398,7 @@ export async function POST(req: NextRequest) {
       process,
       research_meta,
       research_snapshot_id,
+      reference_images: referenceImages,
       errors: errors.length > 0 ? errors : undefined,
     });
   } catch (error: unknown) {

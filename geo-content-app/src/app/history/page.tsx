@@ -30,6 +30,15 @@ interface Article {
     updated_at?: string | null;
 }
 
+interface ReferenceImageAsset {
+    id: string;
+    source_type: 'upload' | 'url';
+    origin_name?: string | null;
+    mime_type?: string | null;
+    public_url: string;
+    created_at?: string | null;
+}
+
 const API_BASE = '/api';
 
 const extractFilename = (contentDisposition?: string) => {
@@ -86,6 +95,7 @@ export default function HistoryPage() {
     const [articles, setArticles] = useState<Article[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedArticle, setSelectedArticle] = useState<Article | null>(null);
+    const [selectedReferenceImages, setSelectedReferenceImages] = useState<ReferenceImageAsset[]>([]);
     const [modalVisible, setModalVisible] = useState(false);
     const [searchText, setSearchText] = useState('');
     const [savingUrlIds, setSavingUrlIds] = useState<Record<string, boolean>>({});
@@ -103,6 +113,16 @@ export default function HistoryPage() {
     useEffect(() => {
         savedUrlMapRef.current = savedUrlMap;
     }, [savedUrlMap]);
+
+    const fetchReferenceImages = async (articleId: string) => {
+        try {
+            const response = await axios.get(`${API_BASE}/articles/${articleId}/reference-images`);
+            const images = Array.isArray(response.data?.images) ? (response.data.images as ReferenceImageAsset[]) : [];
+            setSelectedReferenceImages(images);
+        } catch {
+            setSelectedReferenceImages([]);
+        }
+    };
 
     const fetchArticles = async (mode: ContentMode = modeFilter) => {
         try {
@@ -229,6 +249,44 @@ export default function HistoryPage() {
             message.success('已复制到剪贴板');
         } catch {
             message.error('复制失败');
+        }
+    };
+
+    const copyImageUrl = async (url: string) => {
+        try {
+            await navigator.clipboard.writeText(url);
+            message.success('已复制图片URL');
+        } catch {
+            message.error('复制URL失败');
+        }
+    };
+
+    const copyImageMarkdown = async (url: string) => {
+        try {
+            await navigator.clipboard.writeText(`![](${url})`);
+            message.success('已复制Markdown图片引用');
+        } catch {
+            message.error('复制失败');
+        }
+    };
+
+    const copyImageToClipboard = async (url: string) => {
+        try {
+            const res = await fetch(url);
+            if (!res.ok) throw new Error('图片下载失败');
+            const blob = await res.blob();
+            const ClipboardItemCtor = (window as unknown as { ClipboardItem?: typeof ClipboardItem }).ClipboardItem;
+            if (!navigator.clipboard || !ClipboardItemCtor) {
+                await copyImageUrl(url);
+                message.warning('当前浏览器不支持直接复制图片，已复制URL');
+                return;
+            }
+            const mime = blob.type || 'image/png';
+            await navigator.clipboard.write([new ClipboardItemCtor({ [mime]: blob })]);
+            message.success('已复制图片到剪贴板');
+        } catch {
+            await copyImageUrl(url);
+            message.warning('直接复制图片失败，已回退为复制URL');
         }
     };
 
@@ -384,6 +442,7 @@ export default function HistoryPage() {
                         icon={<EyeOutlined />}
                         onClick={() => {
                             setSelectedArticle(record);
+                            void fetchReferenceImages(record.id);
                             setModalVisible(true);
                         }}
                         style={{ color: 'var(--accent-primary)' }}
@@ -518,7 +577,10 @@ export default function HistoryPage() {
                     </Space>
                 }
                 open={modalVisible}
-                onCancel={() => setModalVisible(false)}
+                onCancel={() => {
+                    setModalVisible(false);
+                    setSelectedReferenceImages([]);
+                }}
                 footer={null}
                 width={900}
                 style={{ top: 40 }}
@@ -547,6 +609,47 @@ export default function HistoryPage() {
                                             >
                                                 {index + 1}. {source.title}
                                             </a>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {selectedReferenceImages.length > 0 && (
+                            <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--border-primary)' }}>
+                                <Text strong style={{ color: 'var(--text-primary)' }}>
+                                    生成阶段参考图片
+                                </Text>
+                                <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 12 }}>
+                                    {selectedReferenceImages.map((img) => (
+                                        <div
+                                            key={img.id}
+                                            style={{
+                                                border: '1px solid var(--border-primary)',
+                                                borderRadius: 8,
+                                                padding: 8,
+                                                background: 'var(--bg-tertiary)',
+                                            }}
+                                        >
+                                            <img
+                                                src={img.public_url}
+                                                alt={img.origin_name || 'reference'}
+                                                style={{ width: '100%', height: 120, objectFit: 'cover', borderRadius: 6 }}
+                                            />
+                                            <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text-secondary)' }}>
+                                                {img.origin_name || img.public_url}
+                                            </div>
+                                            <Space style={{ marginTop: 8 }} size={4} wrap>
+                                                <Button size="small" onClick={() => void copyImageToClipboard(img.public_url)}>
+                                                    复制图片
+                                                </Button>
+                                                <Button size="small" onClick={() => void copyImageUrl(img.public_url)}>
+                                                    复制URL
+                                                </Button>
+                                                <Button size="small" onClick={() => void copyImageMarkdown(img.public_url)}>
+                                                    复制MD
+                                                </Button>
+                                            </Space>
                                         </div>
                                     ))}
                                 </div>

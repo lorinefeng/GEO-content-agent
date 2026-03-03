@@ -24,6 +24,7 @@ export async function GET() {
         Template: boolean;
         TemplateRevision: boolean;
         ResearchSnapshot: boolean;
+        ReferenceImageAsset: boolean;
         User: boolean;
         RegistrationRequest: boolean;
       }
@@ -33,11 +34,13 @@ export async function GET() {
   let authAdmin: { exists: boolean; role: string | null; status: string | null } | undefined;
   let deployment: { commitSha: string | null; branch: string | null; url: string | null } | undefined;
 
+  const r2Bound = Boolean(env.ASSETS);
+
   try {
     const db = await ensureDatabaseReady(getD1Database());
     const rows = await db
       .prepare(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('Article','Template','TemplateRevision','ResearchSnapshot','User','RegistrationRequest')"
+        "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('Article','Template','TemplateRevision','ResearchSnapshot','ReferenceImageAsset','User','RegistrationRequest')"
       )
       .all();
     const names = new Set((rows?.results ?? []).map((r) => (r as { name?: unknown }).name).filter((n): n is string => typeof n === 'string'));
@@ -46,6 +49,7 @@ export async function GET() {
       Template: names.has('Template'),
       TemplateRevision: names.has('TemplateRevision'),
       ResearchSnapshot: names.has('ResearchSnapshot'),
+      ReferenceImageAsset: names.has('ReferenceImageAsset'),
       User: names.has('User'),
       RegistrationRequest: names.has('RegistrationRequest'),
     };
@@ -86,6 +90,10 @@ export async function GET() {
       bound: d1Bound,
       tables: d1Tables ?? null,
       error: d1Error ?? null,
+    },
+    r2: {
+      bound: r2Bound,
+      bucket: r2Bound ? 'ASSETS' : null,
     },
     auth: {
       bootstrap: authBootstrap ?? null,

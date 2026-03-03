@@ -40,6 +40,14 @@ interface ResearchProcessStep {
     detail?: string;
 }
 
+interface ReferenceImagePayload {
+    public_url: string;
+    source_type: 'upload' | 'url';
+    origin_name?: string;
+    mime_type?: string;
+    r2_key?: string;
+}
+
 type BatchProgress = {
     total: number;
     done: number;
@@ -48,6 +56,19 @@ type BatchProgress = {
 };
 
 const API_BASE = '/api';
+
+const normalizeImageUrlArray = (raw: unknown, limit: number): string[] => {
+    if (!Array.isArray(raw)) return [];
+    const out: string[] = [];
+    for (const item of raw) {
+        if (typeof item !== 'string') continue;
+        const url = item.trim();
+        if (!/^https?:\/\//i.test(url)) continue;
+        out.push(url);
+        if (out.length >= limit) break;
+    }
+    return out;
+};
 
 const parseProductsJson = (raw: unknown): ProductInfo[] => {
     if (!Array.isArray(raw)) return [];
@@ -64,6 +85,15 @@ const parseProductsJson = (raw: unknown): ProductInfo[] => {
                   ? parseFloat(priceRaw)
                   : NaN;
         if (!name || !Number.isFinite(price)) continue;
+        const imageUrlRaw = Array.isArray(r.image_urls)
+            ? r.image_urls
+            : Array.isArray(r.imageUrls)
+              ? r.imageUrls
+              : typeof r.image_urls === 'string'
+                ? r.image_urls.split(',')
+                : typeof r.imageUrls === 'string'
+                  ? r.imageUrls.split(',')
+                  : [];
         const product: ProductInfo = {
             name,
             price,
@@ -77,6 +107,7 @@ const parseProductsJson = (raw: unknown): ProductInfo[] => {
                       ? r.mainCategory
                       : undefined,
             tags: Array.isArray(r.tags) ? r.tags.filter((t) => typeof t === 'string') : undefined,
+            image_urls: normalizeImageUrlArray(imageUrlRaw, 2),
         };
         out.push(product);
     }
@@ -141,6 +172,23 @@ export default function GeneratePage() {
         );
     }
 
+    const uploadReferenceImages = async (mode: ContentMode, imageFiles: File[]): Promise<ReferenceImagePayload[]> => {
+        if (imageFiles.length === 0) return [];
+        if (imageFiles.length > 5) {
+            message.error('单次最多上传5张图片');
+            return [];
+        }
+        const formData = new FormData();
+        formData.append('mode', mode);
+        for (const file of imageFiles.slice(0, 5)) {
+            formData.append('files', file);
+        }
+        const response = await axios.post(`${API_BASE}/uploads/reference-images`, formData, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+        });
+        return Array.isArray(response.data?.images) ? (response.data.images as ReferenceImagePayload[]) : [];
+    };
+
     const saveGeneratedArticles = async (
         mode: ContentMode,
         subjectId: string,
@@ -148,7 +196,8 @@ export default function GeneratePage() {
         subjectPayload: unknown,
         generatedArticles: ArticleResult[],
         productPrice = 0,
-        researchSnapshotId?: string
+        researchSnapshotId?: string,
+        referenceImages: ReferenceImagePayload[] = []
     ) => {
         const payload = JSON.stringify(subjectPayload);
         const saveResults = await Promise.allSettled(
@@ -166,6 +215,7 @@ export default function GeneratePage() {
                     strategy_name: article.strategy_name,
                     content: article.content,
                     research_snapshot_id: researchSnapshotId,
+                    reference_images: referenceImages,
                 })
             )
         );
@@ -176,7 +226,7 @@ export default function GeneratePage() {
         }
     };
 
-    const handleGenerateSku = async (product: ProductInfo) => {
+    const handleGenerateSku = async (product: ProductInfo, imageFiles: File[]) => {
         if (selectedStrategies.length === 0) {
             message.warning('请至少选择一种生成策略');
             return;
@@ -190,11 +240,13 @@ export default function GeneratePage() {
 
         try {
             const subjectId = crypto.randomUUID();
+            const uploadedImages = await uploadReferenceImages('sku', imageFiles);
             const response = await axios.post(`${API_BASE}/generate`, {
                 mode: 'sku',
                 subject_id: subjectId,
                 product,
                 strategies: selectedStrategies,
+                reference_images: uploadedImages,
             });
 
             const generatedArticles: ArticleResult[] = Array.isArray(response.data.articles) ? response.data.articles : [];
@@ -212,7 +264,16 @@ export default function GeneratePage() {
                 message.success(`成功生成 ${generatedArticles.length} 篇内容`);
                 const researchSnapshotId =
                     typeof response.data.research_snapshot_id === 'string' ? response.data.research_snapshot_id : undefined;
-                await saveGeneratedArticles('sku', subjectId, product.name, product, generatedArticles, product.price, researchSnapshotId);
+                await saveGeneratedArticles(
+                    'sku',
+                    subjectId,
+                    product.name,
+                    product,
+                    generatedArticles,
+                    product.price,
+                    researchSnapshotId,
+                    uploadedImages
+                );
             }
 
             if (generateErrors.length > 0) {
@@ -231,7 +292,7 @@ export default function GeneratePage() {
         }
     };
 
-    const handleGenerateBrand = async (brand: BrandInfo) => {
+    const handleGenerateBrand = async (brand: BrandInfo, imageFiles: File[]) => {
         if (selectedStrategies.length === 0) {
             message.warning('请至少选择一种生成策略');
             return;
@@ -245,11 +306,13 @@ export default function GeneratePage() {
 
         try {
             const subjectId = crypto.randomUUID();
+            const uploadedImages = await uploadReferenceImages('brand_ip', imageFiles);
             const response = await axios.post(`${API_BASE}/generate`, {
                 mode: 'brand_ip',
                 subject_id: subjectId,
                 brand,
                 strategies: selectedStrategies,
+                reference_images: uploadedImages,
             });
 
             const generatedArticles: ArticleResult[] = Array.isArray(response.data.articles) ? response.data.articles : [];
@@ -267,7 +330,16 @@ export default function GeneratePage() {
                 message.success(`成功生成 ${generatedArticles.length} 篇内容`);
                 const researchSnapshotId =
                     typeof response.data.research_snapshot_id === 'string' ? response.data.research_snapshot_id : undefined;
-                await saveGeneratedArticles('brand_ip', subjectId, brand.name, brand, generatedArticles, 0, researchSnapshotId);
+                await saveGeneratedArticles(
+                    'brand_ip',
+                    subjectId,
+                    brand.name,
+                    brand,
+                    generatedArticles,
+                    0,
+                    researchSnapshotId,
+                    uploadedImages
+                );
             }
 
             if (generateErrors.length > 0) {
@@ -339,11 +411,16 @@ export default function GeneratePage() {
             try {
                 const key = JSON.stringify({ name: product.name, price: product.price, category: product.category ?? '' });
                 const subjectId = productIdMap.get(key) || crypto.randomUUID();
+                const referenceImages: ReferenceImagePayload[] = (product.image_urls ?? []).slice(0, 2).map((url) => ({
+                    public_url: url,
+                    source_type: 'url',
+                }));
                 const response = await axios.post(`${API_BASE}/generate`, {
                     mode: 'sku',
                     subject_id: subjectId,
                     product,
                     strategies: [strategy],
+                    reference_images: referenceImages,
                 });
                 const generatedArticles: ArticleResult[] = Array.isArray(response.data.articles) ? response.data.articles : [];
                 const first = generatedArticles[0];
@@ -366,6 +443,7 @@ export default function GeneratePage() {
                     strategy_name: first.strategy_name,
                     content: first.content,
                     research_snapshot_id: researchSnapshotId,
+                    reference_images: referenceImages,
                 });
 
                 setBatchProgress((prev) => ({
@@ -438,8 +516,8 @@ export default function GeneratePage() {
                     type="info"
                     showIcon
                     style={{ marginBottom: 16 }}
-                    message="品牌IP模式当前为单个生成"
-                    description="里程碑A先上线单条生成链路，批量能力后续按计划追加。"
+                    message="品牌IP模式当前支持单个生成 + 参考图片"
+                    description="可上传最多5张图片，系统会结合官网与联网检索结果进行综合评测。"
                 />
             )}
 
@@ -481,6 +559,9 @@ export default function GeneratePage() {
                                         <Space direction="vertical" style={{ width: '100%' }} size={12}>
                                             <div style={{ color: 'var(--text-secondary)' }}>
                                                 已导入：<Text style={{ color: 'var(--text-primary)' }}>{batchProducts.length}</Text> 个商品
+                                            </div>
+                                            <div style={{ color: 'var(--text-tertiary)', fontSize: 12 }}>
+                                                批量JSON可为每个商品提供最多2个图片URL字段：`image_urls` 或 `imageUrls`
                                             </div>
                                             <Space>
                                                 <Button

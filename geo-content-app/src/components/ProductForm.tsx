@@ -15,10 +15,11 @@ export interface ProductInfo {
     description?: string;
     category?: string;
     tags?: string[];
+    image_urls?: string[];
 }
 
 interface ProductFormProps {
-    onSubmit: (product: ProductInfo) => void;
+    onSubmit: (product: ProductInfo, imageFiles: File[]) => void;
     loading?: boolean;
 }
 
@@ -26,6 +27,7 @@ export default function ProductForm({ onSubmit, loading }: ProductFormProps) {
     const [form] = Form.useForm();
     const [tags, setTags] = React.useState<string[]>([]);
     const [tagInput, setTagInput] = React.useState('');
+    const [imageFileList, setImageFileList] = React.useState<UploadFile[]>([]);
 
     const handleAddTag = () => {
         if (tagInput && !tags.includes(tagInput)) {
@@ -39,7 +41,8 @@ export default function ProductForm({ onSubmit, loading }: ProductFormProps) {
     };
 
     const handleSubmit = (values: ProductInfo) => {
-        onSubmit({ ...values, tags });
+        const imageFiles = imageFileList.map((item) => item.originFileObj).filter(Boolean) as File[];
+        onSubmit({ ...values, tags }, imageFiles);
     };
 
     const handleJsonUpload = (file: UploadFile) => {
@@ -187,6 +190,29 @@ export default function ProductForm({ onSubmit, loading }: ProductFormProps) {
                                 添加
                             </Button>
                         </div>
+                    </Form.Item>
+
+                    <Form.Item
+                        label={<span style={{ color: 'var(--text-secondary)', fontSize: 13 }}>参考图片（可选，最多5张）</span>}
+                        style={{ marginBottom: 20 }}
+                    >
+                        <Upload
+                            multiple
+                            accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+                            beforeUpload={() => false}
+                            maxCount={5}
+                            fileList={imageFileList}
+                            onChange={({ fileList }) => {
+                                setImageFileList(fileList.slice(0, 5));
+                            }}
+                            onRemove={(file) => {
+                                setImageFileList((prev) => prev.filter((item) => item.uid !== file.uid));
+                                return true;
+                            }}
+                            disabled={loading}
+                        >
+                            <Button icon={<UploadOutlined />}>上传图片</Button>
+                        </Upload>
                     </Form.Item>
 
                     <Form.Item style={{ marginBottom: 0 }}>

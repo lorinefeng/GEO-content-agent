@@ -1,10 +1,11 @@
 import { getRequestContext } from '@cloudflare/next-on-pages';
-import type { D1Database } from '@cloudflare/workers-types';
+import type { D1Database, R2Bucket } from '@cloudflare/workers-types';
 
 export type CloudflareEnv = Record<string, unknown>;
 
 export interface CloudflareEnvBindings extends CloudflareEnv {
   DB?: D1Database;
+  ASSETS?: R2Bucket;
   ADMIN_USERNAME?: string;
   ADMIN_PASSWORD?: string;
   ADMIN_FORCE_RESET?: string;
@@ -32,4 +33,13 @@ export function getD1Database(): D1Database {
     throw new Error('D1 数据库未绑定：请在 Cloudflare Pages 绑定 DB');
   }
   return db;
+}
+
+export function getAssetsBucket(): R2Bucket {
+  const env = getCloudflareEnv();
+  const bucket = env.ASSETS;
+  if (!bucket) {
+    throw new Error('R2 Bucket 未绑定：请在 Cloudflare Pages 绑定 ASSETS');
+  }
+  return bucket;
 }

@@ -1,8 +1,9 @@
 'use client';
 
 import React from 'react';
-import { Form, Input, Button, Typography, Tag } from 'antd';
-import { PlusOutlined } from '@ant-design/icons';
+import { Form, Input, Button, Typography, Tag, Upload } from 'antd';
+import { PlusOutlined, UploadOutlined } from '@ant-design/icons';
+import type { UploadFile } from 'antd';
 
 const { Text } = Typography;
 
@@ -16,7 +17,7 @@ export interface BrandInfo {
 }
 
 interface BrandIpFormProps {
-    onSubmit: (brand: BrandInfo) => void;
+    onSubmit: (brand: BrandInfo, imageFiles: File[]) => void;
     loading?: boolean;
 }
 
@@ -24,6 +25,7 @@ export default function BrandIpForm({ onSubmit, loading }: BrandIpFormProps) {
     const [form] = Form.useForm<BrandInfo>();
     const [keywords, setKeywords] = React.useState<string[]>([]);
     const [keywordInput, setKeywordInput] = React.useState('');
+    const [imageFileList, setImageFileList] = React.useState<UploadFile[]>([]);
 
     const handleAddKeyword = () => {
         const next = keywordInput.trim();
@@ -37,10 +39,14 @@ export default function BrandIpForm({ onSubmit, loading }: BrandIpFormProps) {
     };
 
     const handleSubmit = (values: BrandInfo) => {
-        onSubmit({
-            ...values,
-            keywords,
-        });
+        const imageFiles = imageFileList.map((item) => item.originFileObj).filter(Boolean) as File[];
+        onSubmit(
+            {
+                ...values,
+                keywords,
+            },
+            imageFiles
+        );
     };
 
     return (
@@ -147,6 +153,29 @@ export default function BrandIpForm({ onSubmit, loading }: BrandIpFormProps) {
                                 添加
                             </Button>
                         </div>
+                    </Form.Item>
+
+                    <Form.Item
+                        label={<span style={{ color: 'var(--text-secondary)', fontSize: 13 }}>参考图片（可选，最多5张）</span>}
+                        style={{ marginBottom: 20 }}
+                    >
+                        <Upload
+                            multiple
+                            accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+                            beforeUpload={() => false}
+                            maxCount={5}
+                            fileList={imageFileList}
+                            onChange={({ fileList }) => {
+                                setImageFileList(fileList.slice(0, 5));
+                            }}
+                            onRemove={(file) => {
+                                setImageFileList((prev) => prev.filter((item) => item.uid !== file.uid));
+                                return true;
+                            }}
+                            disabled={loading}
+                        >
+                            <Button icon={<UploadOutlined />}>上传图片</Button>
+                        </Upload>
                     </Form.Item>
 
                     <Form.Item style={{ marginBottom: 0 }}>
