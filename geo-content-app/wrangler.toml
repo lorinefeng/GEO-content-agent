@@ -14,6 +14,6 @@ database_name = "geo-db"
 database_id = "80f9c841-7509-42df-a42c-c7681f658b8d"
 
 [[r2_buckets]]
-binding = "ASSETS"
+binding = "R2_MEDIA"
 bucket_name = "geo-content-agent-assets"
 preview_bucket_name = "geo-content-agent-assets-preview"

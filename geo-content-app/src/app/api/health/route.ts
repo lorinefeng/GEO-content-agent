@@ -34,7 +34,7 @@ export async function GET() {
   let authAdmin: { exists: boolean; role: string | null; status: string | null } | undefined;
   let deployment: { commitSha: string | null; branch: string | null; url: string | null } | undefined;
 
-  const r2Bound = Boolean(env.ASSETS);
+  const r2Bound = Boolean(env.R2_MEDIA);
 
   try {
     const db = await ensureDatabaseReady(getD1Database());
@@ -93,7 +93,7 @@ export async function GET() {
     },
     r2: {
       bound: r2Bound,
-      bucket: r2Bound ? 'ASSETS' : null,
+      bucket: r2Bound ? 'R2_MEDIA' : null,
     },
     auth: {
       bootstrap: authBootstrap ?? null,

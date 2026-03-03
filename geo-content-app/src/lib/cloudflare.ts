@@ -5,7 +5,7 @@ export type CloudflareEnv = Record<string, unknown>;
 
 export interface CloudflareEnvBindings extends CloudflareEnv {
   DB?: D1Database;
-  ASSETS?: R2Bucket;
+  R2_MEDIA?: R2Bucket;
   ADMIN_USERNAME?: string;
   ADMIN_PASSWORD?: string;
   ADMIN_FORCE_RESET?: string;
@@ -37,9 +37,9 @@ export function getD1Database(): D1Database {
 
 export function getAssetsBucket(): R2Bucket {
   const env = getCloudflareEnv();
-  const bucket = env.ASSETS;
+  const bucket = env.R2_MEDIA;
   if (!bucket) {
-    throw new Error('R2 Bucket 未绑定：请在 Cloudflare Pages 绑定 ASSETS');
+    throw new Error('R2 Bucket 未绑定：请在 Cloudflare Pages 绑定 R2_MEDIA');
   }
   return bucket;
 }
