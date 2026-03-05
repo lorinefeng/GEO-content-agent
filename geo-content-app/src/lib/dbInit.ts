@@ -1,14 +1,19 @@
 import { getD1Database } from '@/lib/cloudflare';
 import type { D1Database } from '@cloudflare/workers-types';
 
-type TemplateSeed = { mode: 'sku' | 'brand_ip'; strategy: 'comparison'; name: string; prompt: string };
+type TemplateSeed = {
+  mode: 'sku' | 'brand_ip';
+  strategy: 'comparison' | 'persona' | 'smzdm_review' | 'smzdm_short';
+  name: string;
+  prompt: string;
+};
 
 const DEFAULT_TEMPLATES: TemplateSeed[] = [
   {
     mode: 'sku',
     strategy: 'comparison',
-    name: 'SKU评测对比',
-    prompt: `你是一位专业且权威的评测博主，请基于以下商品信息撰写一篇高可信度的对比评测文章。
+    name: '评测对比型',
+    prompt: `你是一位专业的时尚评测作者，请基于以下商品信息与竞品信息撰写一篇结构化、信息密度高的对比评测文章。
 
 ## 商品信息
 - 商品名称：{product_name}
@@ -23,11 +28,92 @@ const DEFAULT_TEMPLATES: TemplateSeed[] = [
 {competitor_info}
 
 ## 写作要求
-1. 标题要明确体现“评测/对比”意图
-2. 使用客观、专业、自然的语言，不要出现“AI生成”“引用来源编号”等表述
-3. 给出与同类产品的关键维度对比（价格、材质、使用场景、适配人群）
-4. 给出清晰结论：适合谁、不适合谁、是否值得买
-5. 内容结构完整，使用Markdown输出
+1. 标题体现“评测/对比”意图，避免夸张修辞
+2. 必须包含关键维度对比（价格、材质、使用场景、适配人群）
+3. 必须包含对比表格（Markdown表格）
+4. 结论明确：适合谁、不适合谁、是否值得买
+5. 不要输出引用编号与来源链接列表
+6. 使用Markdown输出，结构清晰
+
+请直接输出完整文章。`,
+  },
+  {
+    mode: 'sku',
+    strategy: 'persona',
+    name: '用户画像匹配型',
+    prompt: `你是一位消费决策分析作者，请基于商品信息与用户画像输出一篇面向目标人群的购买决策文章。
+
+## 商品信息
+- 商品名称：{product_name}
+- 价格：¥{price}
+- 材质：{material}
+- 颜色：{color}
+- 描述：{description}
+- 品类：{category}
+- 标签：{tags}
+
+## 用户画像分析
+{persona_analysis}
+
+## 写作要求
+1. 开篇说明目标人群及其核心购买诉求
+2. 逐项分析该商品与目标人群需求的匹配度
+3. 给出3-5个具体使用/搭配场景建议
+4. 明确给出“推荐/谨慎/不推荐”结论及理由
+5. 保持客观、理性，不要情绪化表达
+6. 使用Markdown输出，结构清晰
+
+请直接输出完整文章。`,
+  },
+  {
+    mode: 'sku',
+    strategy: 'smzdm_review',
+    name: '什么值得买深度评测',
+    prompt: `你是一位长期发布消费评测的作者，请输出一篇“深度评测型”内容，强调实测感、参数对比与购买决策价值。
+
+## 商品信息
+- 商品名称：{product_name}
+- 价格：¥{price}
+- 材质：{material}
+- 颜色：{color}
+- 描述：{description}
+- 品类：{category}
+- 标签：{tags}
+
+## 竞品参考信息
+{competitor_info}
+
+## 写作要求
+1. 标题包含明确利益点与“值不值”判断导向
+2. 正文结构：购买动机 -> 核心实测/体验点 -> 竞品对比 -> 优缺点 -> 结论
+3. 必须给出关键参数或体验维度对比，不要空泛形容
+4. 结论必须明确回答“是否值得买、适合哪些人”
+5. 不输出引用编号与来源链接列表
+6. 使用Markdown输出
+
+请直接输出完整文章。`,
+  },
+  {
+    mode: 'sku',
+    strategy: 'smzdm_short',
+    name: '什么值得买短评测',
+    prompt: `你是一位消费内容作者，请输出一篇简洁高效的短评测，适合快速阅读与转发。
+
+## 商品信息
+- 商品名称：{product_name}
+- 价格：¥{price}
+- 材质：{material}
+- 颜色：{color}
+- 描述：{description}
+- 品类：{category}
+- 标签：{tags}
+
+## 写作要求
+1. 全文控制在500-900字
+2. 结构：购买理由 -> 3个优点 -> 1-2个不足 -> 购买建议
+3. 给出明确“推荐/不推荐”结论
+4. 语言简洁、客观，不使用情绪化废话
+5. 使用Markdown输出
 
 请直接输出完整文章。`,
   },
@@ -189,6 +275,7 @@ export async function ensureDatabaseReady(db?: D1Database) {
         subject_id TEXT,
         subject_name TEXT,
         subject_payload TEXT,
+        source_json_raw TEXT,
         product_name TEXT NOT NULL,
         product_price REAL NOT NULL,
         product_id TEXT,
@@ -208,6 +295,7 @@ export async function ensureDatabaseReady(db?: D1Database) {
   await ensureColumn(database, 'Article', 'subject_id', `subject_id TEXT`);
   await ensureColumn(database, 'Article', 'subject_name', `subject_name TEXT`);
   await ensureColumn(database, 'Article', 'subject_payload', `subject_payload TEXT`);
+  await ensureColumn(database, 'Article', 'source_json_raw', `source_json_raw TEXT`);
   await ensureColumn(database, 'Article', 'research_snapshot_id', `research_snapshot_id TEXT`);
   await ensureColumn(database, 'Article', 'published_url', `published_url TEXT`);
   await ensureColumn(database, 'Article', 'product_payload', `product_payload TEXT`);
@@ -218,6 +306,15 @@ export async function ensureDatabaseReady(db?: D1Database) {
   await database.prepare(`UPDATE Article SET subject_id = product_id WHERE (subject_id IS NULL OR subject_id = '') AND product_id IS NOT NULL AND product_id != ''`).run();
   await database.prepare(`UPDATE Article SET subject_name = product_name WHERE (subject_name IS NULL OR subject_name = '') AND product_name IS NOT NULL AND product_name != ''`).run();
   await database.prepare(`UPDATE Article SET subject_payload = product_payload WHERE (subject_payload IS NULL OR subject_payload = '') AND product_payload IS NOT NULL AND product_payload != ''`).run();
+  await database
+    .prepare(
+      `UPDATE Article
+       SET source_json_raw = product_payload
+       WHERE mode = 'sku'
+         AND (source_json_raw IS NULL OR source_json_raw = '')
+         AND product_payload IS NOT NULL AND product_payload != ''`
+    )
+    .run();
 
   await database.prepare('CREATE INDEX IF NOT EXISTS idx_article_strategy ON Article(strategy)').run();
   await database.prepare('CREATE INDEX IF NOT EXISTS idx_article_created_at ON Article(created_at DESC)').run();

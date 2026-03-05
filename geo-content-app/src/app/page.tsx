@@ -29,7 +29,7 @@ export default function HomePage() {
             margin: 0,
           }}
         >
-          在SKU模式与品牌IP模式下生成对比评测内容
+          在SKU模式与品牌IP模式下生成高可信评测内容（SKU四策略 + 品牌IP单策略）
         </Paragraph>
       </div>
 
@@ -67,7 +67,7 @@ export default function HomePage() {
                     创建内容
                   </Title>
                   <Paragraph style={{ color: 'var(--text-secondary)', margin: 0, fontSize: 14 }}>
-                    选择SKU或品牌IP模式，生成对比评测
+                    选择SKU或品牌IP模式，按策略生成内容
                   </Paragraph>
                 </div>
                 <ArrowRightOutlined style={{ color: 'var(--text-tertiary)', fontSize: 18 }} />
@@ -146,10 +146,10 @@ export default function HomePage() {
             }}
           >
             <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 4 }}>
-              SKU对比评测
+              SKU 四策略
             </div>
             <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
-              面向商品规格、价格带与竞品特征的评测内容
+              评测对比型 / 用户画像匹配型 / 什么值得买深度评测 / 什么值得买短评测
             </div>
           </div>
         </Col>

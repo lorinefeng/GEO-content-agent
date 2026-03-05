@@ -25,7 +25,15 @@ interface TemplateRevision {
 
 const API_BASE = '/api';
 
-const strategyList = [{ id: 'comparison', name: '对比评测' }];
+const STRATEGY_LIST: Record<ContentMode, Array<{ id: string; name: string }>> = {
+    sku: [
+        { id: 'comparison', name: '评测对比型' },
+        { id: 'persona', name: '用户画像匹配型' },
+        { id: 'smzdm_review', name: '什么值得买深度评测' },
+        { id: 'smzdm_short', name: '什么值得买短评测' },
+    ],
+    brand_ip: [{ id: 'comparison', name: '品牌IP对比评测' }],
+};
 
 export default function TemplatesPage() {
     const { loading: authLoading } = useRequireAuth();
@@ -38,6 +46,7 @@ export default function TemplatesPage() {
     const [hasChanges, setHasChanges] = useState(false);
     const [revisions, setRevisions] = useState<TemplateRevision[]>([]);
     const [loadingRevisions, setLoadingRevisions] = useState(false);
+    const strategyList = STRATEGY_LIST[mode];
 
     const fetchTemplates = async (currentMode: ContentMode = mode) => {
         setLoading(true);
@@ -69,6 +78,13 @@ export default function TemplatesPage() {
     useEffect(() => {
         fetchTemplates(mode);
     }, [mode]);
+
+    useEffect(() => {
+        const available = new Set(strategyList.map((s) => s.id));
+        if (!available.has(selectedStrategy)) {
+            setSelectedStrategy(strategyList[0]?.id || 'comparison');
+        }
+    }, [mode, strategyList, selectedStrategy]);
 
     useEffect(() => {
         const template = templates.find((t) => t.strategy === selectedStrategy);
@@ -258,7 +274,9 @@ export default function TemplatesPage() {
                             ) : currentTemplate ? (
                                 <>
                                     <Paragraph style={{ color: 'var(--text-tertiary)', fontSize: 13, marginBottom: 12 }}>
-                                        当前仅保留“对比评测”策略。SKU与品牌IP模板完全独立，互不影响。
+                                        {mode === 'sku'
+                                            ? 'SKU模式支持4种策略模板；品牌IP模式仅保留“对比评测”。两种模式模板独立维护。'
+                                            : '品牌IP模式仅保留“对比评测”策略模板，与SKU模板独立维护。'}
                                     </Paragraph>
                                     <Input.TextArea
                                         value={editedPrompt}

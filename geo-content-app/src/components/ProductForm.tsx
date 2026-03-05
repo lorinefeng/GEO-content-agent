@@ -16,6 +16,7 @@ export interface ProductInfo {
     category?: string;
     tags?: string[];
     image_urls?: string[];
+    source_json_raw?: string;
 }
 
 interface ProductFormProps {
@@ -28,6 +29,7 @@ export default function ProductForm({ onSubmit, loading }: ProductFormProps) {
     const [tags, setTags] = React.useState<string[]>([]);
     const [tagInput, setTagInput] = React.useState('');
     const [imageFileList, setImageFileList] = React.useState<UploadFile[]>([]);
+    const [sourceJsonRaw, setSourceJsonRaw] = React.useState<string>('');
 
     const handleAddTag = () => {
         if (tagInput && !tags.includes(tagInput)) {
@@ -42,7 +44,7 @@ export default function ProductForm({ onSubmit, loading }: ProductFormProps) {
 
     const handleSubmit = (values: ProductInfo) => {
         const imageFiles = imageFileList.map((item) => item.originFileObj).filter(Boolean) as File[];
-        onSubmit({ ...values, tags }, imageFiles);
+        onSubmit({ ...values, tags, source_json_raw: sourceJsonRaw || undefined }, imageFiles);
     };
 
     const handleJsonUpload = (file: UploadFile) => {
@@ -61,8 +63,10 @@ export default function ProductForm({ onSubmit, loading }: ProductFormProps) {
                 if (json.tags && Array.isArray(json.tags)) {
                     setTags(json.tags);
                 }
+                setSourceJsonRaw(JSON.stringify(json, null, 2));
                 message.success('导入成功');
             } catch {
+                setSourceJsonRaw('');
                 message.error('JSON解析失败');
             }
         };

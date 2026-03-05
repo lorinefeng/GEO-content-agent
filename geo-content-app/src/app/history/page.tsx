@@ -16,6 +16,7 @@ interface Article {
     subject_id?: string | null;
     subject_name?: string | null;
     subject_payload?: string | null;
+    source_json_raw?: string | null;
     product_name: string;
     product_price: number;
     product_id?: string | null;
@@ -87,6 +88,37 @@ const parseResearchQueries = (raw: string | null | undefined) => {
     } catch {
         return [];
     }
+};
+
+const normalizeJsonText = (raw: string) => {
+    try {
+        const parsed = JSON.parse(raw) as unknown;
+        return JSON.stringify(parsed, null, 2);
+    } catch {
+        return raw;
+    }
+};
+
+const resolveTraceableSkuJson = (article: Article) => {
+    if (article.mode === 'brand_ip') return null;
+
+    const raw = typeof article.source_json_raw === 'string' ? article.source_json_raw.trim() : '';
+    if (raw) {
+        return {
+            text: normalizeJsonText(raw),
+            fallback: false,
+        };
+    }
+
+    const candidates = [article.subject_payload, article.product_payload];
+    for (const candidate of candidates) {
+        if (typeof candidate !== 'string' || !candidate.trim()) continue;
+        return {
+            text: normalizeJsonText(candidate),
+            fallback: true,
+        };
+    }
+    return null;
 };
 
 export default function HistoryPage() {
@@ -591,6 +623,51 @@ export default function HistoryPage() {
             >
                 {selectedArticle && (
                     <div>
+                        {(() => {
+                            const traceableJson = resolveTraceableSkuJson(selectedArticle);
+                            if (!traceableJson) return null;
+                            return (
+                                <div style={{ marginBottom: 16, padding: 12, border: '1px solid var(--border-primary)', borderRadius: 8 }}>
+                                    <div
+                                        style={{
+                                            display: 'flex',
+                                            justifyContent: 'space-between',
+                                            alignItems: 'center',
+                                            marginBottom: 8,
+                                        }}
+                                    >
+                                        <Text strong style={{ color: 'var(--text-primary)' }}>
+                                            SKU原始JSON追溯
+                                        </Text>
+                                        <Button size="small" onClick={() => void handleCopy(traceableJson.text)}>
+                                            复制JSON
+                                        </Button>
+                                    </div>
+                                    {traceableJson.fallback && (
+                                        <div style={{ color: 'var(--text-tertiary)', fontSize: 12, marginBottom: 8 }}>
+                                            该记录生成于追溯升级前，当前展示保存时的SKU快照。
+                                        </div>
+                                    )}
+                                    <pre
+                                        style={{
+                                            margin: 0,
+                                            padding: 10,
+                                            background: 'var(--bg-tertiary)',
+                                            border: '1px solid var(--border-primary)',
+                                            borderRadius: 6,
+                                            maxHeight: 220,
+                                            overflow: 'auto',
+                                            whiteSpace: 'pre-wrap',
+                                            color: 'var(--text-secondary)',
+                                            fontSize: 12,
+                                        }}
+                                    >
+                                        {traceableJson.text}
+                                    </pre>
+                                </div>
+                            );
+                        })()}
+
                         <MarkdownPreview content={selectedArticle.content} />
 
                         {parseResearchSources(selectedArticle.research_sources_json).length > 0 && (

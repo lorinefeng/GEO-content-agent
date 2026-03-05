@@ -44,6 +44,7 @@ export async function PATCH(
       .prepare(
         `SELECT
           a.id, a.mode, a.subject_id, a.subject_name, a.subject_payload,
+          a.source_json_raw,
           a.product_name, a.product_price, a.product_id,
           a.strategy, a.strategy_name, a.content, a.published_url,
           a.product_payload, a.research_snapshot_id, a.created_at, a.updated_at,
@@ -82,6 +83,7 @@ export async function DELETE(
       .prepare(
         `SELECT
           a.id, a.mode, a.subject_id, a.subject_name, a.subject_payload,
+          a.source_json_raw,
           a.product_name, a.product_price, a.product_id,
           a.strategy, a.strategy_name, a.content, a.published_url,
           a.product_payload, a.research_snapshot_id, a.created_at, a.updated_at,

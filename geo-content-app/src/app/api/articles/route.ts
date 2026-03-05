@@ -25,6 +25,7 @@ export async function GET(req: NextRequest) {
     const baseSelect =
       `SELECT
         a.id, a.mode, a.subject_id, a.subject_name, a.subject_payload,
+        a.source_json_raw,
         a.product_name, a.product_price, a.product_id,
         a.strategy, a.strategy_name, a.content, a.published_url,
         a.product_payload, a.research_snapshot_id, a.created_at, a.updated_at,
@@ -79,6 +80,7 @@ export async function POST(req: NextRequest) {
       published_url?: unknown;
       research_snapshot_id?: unknown;
       reference_images?: unknown;
+      source_json_raw?: unknown;
     };
 
     const mode = body.mode === 'brand_ip' ? 'brand_ip' : 'sku';
@@ -98,6 +100,10 @@ export async function POST(req: NextRequest) {
 
     const product_payload_raw = typeof body.product_payload === 'string' ? body.product_payload : '';
     const product_payload = product_payload_raw || subject_payload;
+    const source_json_raw_input = typeof body.source_json_raw === 'string' ? body.source_json_raw : '';
+    const source_json_raw =
+      source_json_raw_input ||
+      (mode === 'sku' ? product_payload || subject_payload : '');
 
     const published_url = typeof body.published_url === 'string' ? body.published_url : '';
     const research_snapshot_id = typeof body.research_snapshot_id === 'string' ? body.research_snapshot_id : '';
@@ -130,6 +136,9 @@ export async function POST(req: NextRequest) {
     if (!product_name || !strategy || !strategy_name || !content || !Number.isFinite(product_price)) {
       return NextResponse.json({ error: '参数不合法' }, { status: 400 });
     }
+    if (source_json_raw.length > 500_000) {
+      return NextResponse.json({ error: 'source_json_raw 过大（最大 500000 字符）' }, { status: 400 });
+    }
 
     const id = crypto.randomUUID();
 
@@ -137,6 +146,7 @@ export async function POST(req: NextRequest) {
       .prepare(
         `INSERT INTO Article (
           id, mode, subject_id, subject_name, subject_payload,
+          source_json_raw,
           product_name, product_price, product_id,
           strategy, strategy_name, content,
           published_url, product_payload, research_snapshot_id,
@@ -149,6 +159,7 @@ export async function POST(req: NextRequest) {
         subject_id || null,
         subject_name || product_name,
         subject_payload || null,
+        source_json_raw || null,
         product_name,
         product_price,
         product_id || null,
@@ -186,6 +197,7 @@ export async function POST(req: NextRequest) {
       .prepare(
         `SELECT
           a.id, a.mode, a.subject_id, a.subject_name, a.subject_payload,
+          a.source_json_raw,
           a.product_name, a.product_price, a.product_id,
           a.strategy, a.strategy_name, a.content, a.published_url,
           a.product_payload, a.research_snapshot_id, a.created_at, a.updated_at,

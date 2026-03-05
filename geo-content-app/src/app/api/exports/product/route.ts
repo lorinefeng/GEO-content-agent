@@ -48,7 +48,7 @@ export async function GET(req: NextRequest) {
   try {
     const result = await db
       .prepare(
-        `SELECT id, product_name, product_price, product_id, strategy, strategy_name, content, published_url, product_payload, created_at
+        `SELECT id, product_name, product_price, product_id, strategy, strategy_name, content, published_url, product_payload, source_json_raw, created_at
          FROM Article
          WHERE product_id = ?
          ORDER BY created_at DESC`
@@ -63,6 +63,18 @@ export async function GET(req: NextRequest) {
 
     let product: Record<string, unknown> | null = null;
     for (const r of rows) {
+      const sourceJsonRaw = typeof r.source_json_raw === 'string' ? r.source_json_raw : '';
+      if (sourceJsonRaw) {
+        try {
+          const parsed = JSON.parse(sourceJsonRaw);
+          if (parsed && typeof parsed === 'object') {
+            product = parsed as Record<string, unknown>;
+            break;
+          }
+        } catch {
+          // fallback to product_payload
+        }
+      }
       const payload = typeof r.product_payload === 'string' ? r.product_payload : '';
       if (!payload) continue;
       try {
@@ -105,4 +117,3 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Failed to export product' }, { status: 500 });
   }
 }
-

@@ -108,6 +108,7 @@ const parseProductsJson = (raw: unknown): ProductInfo[] => {
                       : undefined,
             tags: Array.isArray(r.tags) ? r.tags.filter((t) => typeof t === 'string') : undefined,
             image_urls: normalizeImageUrlArray(imageUrlRaw, 2),
+            source_json_raw: JSON.stringify(item, null, 2),
         };
         out.push(product);
     }
@@ -197,7 +198,8 @@ export default function GeneratePage() {
         generatedArticles: ArticleResult[],
         productPrice = 0,
         researchSnapshotId?: string,
-        referenceImages: ReferenceImagePayload[] = []
+        referenceImages: ReferenceImagePayload[] = [],
+        sourceJsonRaw?: string
     ) => {
         const payload = JSON.stringify(subjectPayload);
         const saveResults = await Promise.allSettled(
@@ -216,6 +218,7 @@ export default function GeneratePage() {
                     content: article.content,
                     research_snapshot_id: researchSnapshotId,
                     reference_images: referenceImages,
+                    source_json_raw: sourceJsonRaw,
                 })
             )
         );
@@ -272,7 +275,8 @@ export default function GeneratePage() {
                     generatedArticles,
                     product.price,
                     researchSnapshotId,
-                    uploadedImages
+                    uploadedImages,
+                    product.source_json_raw
                 );
             }
 
@@ -444,6 +448,7 @@ export default function GeneratePage() {
                     content: first.content,
                     research_snapshot_id: researchSnapshotId,
                     reference_images: referenceImages,
+                    source_json_raw: product.source_json_raw,
                 });
 
                 setBatchProgress((prev) => ({
