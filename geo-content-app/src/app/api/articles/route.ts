@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getD1Database } from '@/lib/cloudflare';
 import { ensureDatabaseReady } from '@/lib/dbInit';
 import { getActiveUser, unauthorized } from '@/lib/apiAuth';
+import { generateQuestionPackagePayload, upsertQuestionPackage } from '@/lib/questionPackages';
 
 export const runtime = 'edge';
 
@@ -210,7 +211,45 @@ export async function POST(req: NextRequest) {
       .bind(id)
       .first();
 
-    return NextResponse.json({ success: true, article: created });
+    let questionPackageStatus: string | null = null;
+    let questionPackageError: string | null = null;
+    if (mode === 'sku') {
+      try {
+        const packageInput = {
+          articleId: id,
+          productId: product_id || subject_id || id,
+          productName: product_name,
+          strategy,
+          strategyName: strategy_name,
+          productPrice: product_price,
+          productPayload: product_payload || subject_payload || null,
+          sourceJsonRaw: source_json_raw || null,
+          content,
+        };
+        const packageResult = await generateQuestionPackagePayload(packageInput);
+
+        questionPackageStatus = packageResult.status;
+        questionPackageError = packageResult.errorMessage || null;
+
+        await upsertQuestionPackage(
+          db,
+          packageInput,
+          packageResult.payload,
+          packageResult.status,
+          packageResult.errorMessage
+        );
+      } catch (packageError) {
+        questionPackageStatus = 'failed';
+        questionPackageError = packageError instanceof Error ? packageError.message : String(packageError);
+      }
+    }
+
+    return NextResponse.json({
+      success: true,
+      article: created,
+      question_package_status: questionPackageStatus,
+      question_package_error: questionPackageError,
+    });
   } catch (error) {
     console.error('Create article error:', error);
     return NextResponse.json({ error: 'Failed to create article' }, { status: 500 });

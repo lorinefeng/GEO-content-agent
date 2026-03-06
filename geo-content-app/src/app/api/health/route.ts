@@ -25,6 +25,7 @@ export async function GET() {
         TemplateRevision: boolean;
         ResearchSnapshot: boolean;
         ReferenceImageAsset: boolean;
+        QuestionPackage: boolean;
         User: boolean;
         RegistrationRequest: boolean;
       }
@@ -40,7 +41,7 @@ export async function GET() {
     const db = await ensureDatabaseReady(getD1Database());
     const rows = await db
       .prepare(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('Article','Template','TemplateRevision','ResearchSnapshot','ReferenceImageAsset','User','RegistrationRequest')"
+        "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('Article','Template','TemplateRevision','ResearchSnapshot','ReferenceImageAsset','QuestionPackage','User','RegistrationRequest')"
       )
       .all();
     const names = new Set((rows?.results ?? []).map((r) => (r as { name?: unknown }).name).filter((n): n is string => typeof n === 'string'));
@@ -50,6 +51,7 @@ export async function GET() {
       TemplateRevision: names.has('TemplateRevision'),
       ResearchSnapshot: names.has('ResearchSnapshot'),
       ReferenceImageAsset: names.has('ReferenceImageAsset'),
+      QuestionPackage: names.has('QuestionPackage'),
       User: names.has('User'),
       RegistrationRequest: names.has('RegistrationRequest'),
     };

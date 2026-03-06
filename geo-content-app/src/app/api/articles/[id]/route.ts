@@ -102,6 +102,7 @@ export async function DELETE(
       .all();
 
     await db.prepare('DELETE FROM ReferenceImageAsset WHERE article_id = ?').bind(id).run();
+    await db.prepare('DELETE FROM QuestionPackage WHERE article_id = ?').bind(id).run();
 
     await db.prepare('DELETE FROM Article WHERE id = ?').bind(id).run();
 

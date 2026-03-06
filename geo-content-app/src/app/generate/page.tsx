@@ -224,8 +224,16 @@ export default function GeneratePage() {
         );
 
         const failedCount = saveResults.filter((r) => r.status === 'rejected').length;
+        const questionFallbackCount = saveResults.filter(
+            (r) =>
+                r.status === 'fulfilled' &&
+                (r.value.data?.question_package_status === 'fallback' || r.value.data?.question_package_status === 'failed')
+        ).length;
         if (failedCount > 0) {
             message.warning(`内容已生成，但有 ${failedCount} 篇保存历史失败`);
+        }
+        if (questionFallbackCount > 0) {
+            message.warning(`有 ${questionFallbackCount} 篇文章的问题包使用了降级生成，可在“问题设计”页继续编辑`);
         }
     };
 

@@ -384,6 +384,36 @@ export async function ensureDatabaseReady(db?: D1Database) {
 
   await database
     .prepare(
+      `CREATE TABLE IF NOT EXISTS QuestionPackage (
+        id TEXT PRIMARY KEY,
+        article_id TEXT NOT NULL UNIQUE,
+        mode TEXT NOT NULL DEFAULT 'sku',
+        product_id TEXT NOT NULL,
+        product_name TEXT NOT NULL,
+        strategy TEXT NOT NULL,
+        strategy_name TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'generated',
+        error_message TEXT,
+        package_json TEXT NOT NULL,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT
+      )`
+    )
+    .run();
+  await ensureColumn(database, 'QuestionPackage', 'mode', `mode TEXT NOT NULL DEFAULT 'sku'`);
+  await ensureColumn(database, 'QuestionPackage', 'status', `status TEXT NOT NULL DEFAULT 'generated'`);
+  await ensureColumn(database, 'QuestionPackage', 'error_message', `error_message TEXT`);
+  await ensureColumn(database, 'QuestionPackage', 'updated_at', `updated_at TEXT`);
+  await database
+    .prepare(`UPDATE QuestionPackage SET updated_at = created_at WHERE updated_at IS NULL OR updated_at = ''`)
+    .run();
+  await database.prepare('CREATE INDEX IF NOT EXISTS idx_question_package_article_id ON QuestionPackage(article_id)').run();
+  await database.prepare('CREATE INDEX IF NOT EXISTS idx_question_package_product_id ON QuestionPackage(product_id)').run();
+  await database.prepare('CREATE INDEX IF NOT EXISTS idx_question_package_created_at ON QuestionPackage(created_at DESC)').run();
+  await database.prepare('CREATE INDEX IF NOT EXISTS idx_question_package_mode_product_id ON QuestionPackage(mode, product_id)').run();
+
+  await database
+    .prepare(
       `CREATE TABLE IF NOT EXISTS User (
         id TEXT PRIMARY KEY,
         username TEXT NOT NULL UNIQUE,

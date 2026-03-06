@@ -6,6 +6,7 @@ import {
     HomeOutlined,
     EditOutlined,
     HistoryOutlined,
+    QuestionCircleOutlined,
     SettingOutlined,
     UserOutlined,
     SunOutlined,
@@ -70,6 +71,11 @@ export default function MainLayout({ children }: MainLayoutProps) {
             icon: <SettingOutlined />,
             label: <Link href="/templates">模板管理</Link>,
         },
+        {
+            key: '/question-design',
+            icon: <QuestionCircleOutlined />,
+            label: <Link href="/question-design">问题设计</Link>,
+        },
         ...(user?.role === 'admin'
             ? [
                   {
@@ -86,6 +92,7 @@ export default function MainLayout({ children }: MainLayoutProps) {
         '/generate': '创建内容',
         '/history': '历史记录',
         '/templates': '模板配置',
+        '/question-design': '问题设计',
         '/admin': '账号审批',
         '/login': '登录',
     };
