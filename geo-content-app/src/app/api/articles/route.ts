@@ -152,7 +152,7 @@ export async function POST(req: NextRequest) {
           strategy, strategy_name, content,
           published_url, product_payload, research_snapshot_id,
           created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`
       )
       .bind(
         id,

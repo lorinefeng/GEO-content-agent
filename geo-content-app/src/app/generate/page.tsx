@@ -436,7 +436,16 @@ export default function GeneratePage() {
                 });
                 const generatedArticles: ArticleResult[] = Array.isArray(response.data.articles) ? response.data.articles : [];
                 const first = generatedArticles[0];
-                if (!first || !first.content) throw new Error('生成结果为空');
+                if (!first || !first.content) {
+                    const serverErrors = Array.isArray(response.data?.errors)
+                        ? response.data.errors.filter((item: unknown): item is string => typeof item === 'string' && item.trim().length > 0)
+                        : [];
+                    const serverMessage =
+                        typeof response.data?.error === 'string' && response.data.error.trim().length > 0
+                            ? response.data.error.trim()
+                            : '';
+                    throw new Error(serverErrors[0] || serverMessage || '生成结果为空');
+                }
 
                 const subjectPayload = JSON.stringify(product);
                 const researchSnapshotId =
@@ -466,7 +475,12 @@ export default function GeneratePage() {
                 }));
                 successRef.current += 1;
             } catch (err) {
-                const msg = err instanceof Error ? err.message : String(err);
+                const axiosError = err as { response?: { status?: number; data?: unknown } };
+                const data = axiosError?.response?.data as { error?: unknown } | undefined;
+                const serverMessage = data && typeof data.error === 'string' ? data.error : '';
+                const statusText =
+                    typeof axiosError?.response?.status === 'number' ? `（HTTP ${axiosError.response.status}）` : '';
+                const msg = serverMessage || (err instanceof Error ? `${err.message}${statusText}` : String(err));
                 setBatchErrors((prev) => [`${strategy} / ${product.name}: ${msg}`, ...prev].slice(0, 50));
                 setBatchProgress((prev) => ({
                     ...prev,

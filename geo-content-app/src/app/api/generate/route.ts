@@ -258,11 +258,19 @@ export async function POST(req: NextRequest) {
             temperature: 0.4,
           });
 
+          const content =
+            typeof response.choices[0]?.message?.content === 'string'
+              ? response.choices[0].message.content.trim()
+              : '';
+          if (!content) {
+            throw new Error('模型返回空内容');
+          }
+
           articles.push({
             mode,
             strategy,
             strategy_name: template?.name || SKU_STRATEGY_NAMES[strategy as keyof typeof SKU_STRATEGY_NAMES] || strategy,
-            content: response.choices[0].message.content || '',
+            content,
           });
         } catch (err: unknown) {
           const message = err instanceof Error ? err.message : String(err);
@@ -370,11 +378,19 @@ export async function POST(req: NextRequest) {
             temperature: 0.4,
           });
 
+          const content =
+            typeof response.choices[0]?.message?.content === 'string'
+              ? response.choices[0].message.content.trim()
+              : '';
+          if (!content) {
+            throw new Error('模型返回空内容');
+          }
+
           articles.push({
             mode,
             strategy,
             strategy_name: template?.name || BRAND_STRATEGY_NAMES.comparison,
-            content: response.choices[0].message.content || '',
+            content,
           });
         } catch (err: unknown) {
           const message = err instanceof Error ? err.message : String(err);
