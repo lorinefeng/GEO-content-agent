@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
-import { getCloudflareEnv, getD1Database } from '@/lib/cloudflare';
+import { getAssetsBucket, getCloudflareEnv, getD1Database } from '@/lib/cloudflare';
 import { ensureDatabaseReady } from '@/lib/dbInit';
 import { getActiveUser, unauthorized } from '@/lib/apiAuth';
 import { buildSkuCompetitorResearch, type ResearchProcessStep } from '@/lib/research/skuCompetitorResearch';
@@ -54,6 +54,7 @@ const IMAGE_FETCH_HEADERS = {
   Accept: 'image/*,*/*;q=0.8',
   'User-Agent': 'Mozilla/5.0 GEOContentAgent/1.0',
 };
+const MAX_REMOTE_IMAGE_SIZE = 8 * 1024 * 1024;
 
 function parseMode(raw: unknown): ContentMode {
   return raw === 'brand_ip' ? 'brand_ip' : 'sku';
@@ -146,7 +147,94 @@ async function canUseRemoteImage(url: string): Promise<boolean> {
   return false;
 }
 
-async function sanitizeReferenceImages(images: ReferenceImage[]) {
+const safeImageExt = (mime: string, fallbackUrl: string) => {
+  const normalized = mime.toLowerCase();
+  if (normalized.startsWith('image/jpeg')) return 'jpg';
+  if (normalized.startsWith('image/png')) return 'png';
+  if (normalized.startsWith('image/webp')) return 'webp';
+  if (normalized.startsWith('image/gif')) return 'gif';
+
+  try {
+    const pathname = new URL(fallbackUrl).pathname;
+    const ext = pathname.split('.').pop()?.toLowerCase() || 'jpg';
+    return ext.replace(/[^a-z0-9]/g, '') || 'jpg';
+  } catch {
+    return 'jpg';
+  }
+};
+
+const makePublicImageUrl = (req: NextRequest, key: string) => {
+  const encodedPath = key
+    .split('/')
+    .map((segment) => encodeURIComponent(segment))
+    .join('/');
+  const origin = new URL(req.url).origin;
+  return `${origin}/api/public/reference-images/${encodedPath}`;
+};
+
+async function mirrorRemoteImageToR2(
+  req: NextRequest,
+  image: ReferenceImage,
+  mode: ContentMode
+): Promise<ReferenceImage | null> {
+  const bucket = getAssetsBucket();
+  let response: Response | null = null;
+
+  try {
+    const refererOrigin = new URL(image.public_url).origin;
+    response = await fetch(image.public_url, {
+      method: 'GET',
+      headers: {
+        ...IMAGE_FETCH_HEADERS,
+        Referer: `${refererOrigin}/`,
+      },
+      redirect: 'follow',
+    });
+  } catch {
+    response = null;
+  }
+
+  if (!response || !response.ok) {
+    return null;
+  }
+
+  const contentType = (response.headers.get('content-type') || '').toLowerCase();
+  if (!contentType.startsWith('image/')) {
+    return null;
+  }
+
+  const contentLength = Number.parseInt(response.headers.get('content-length') || '', 10);
+  if (Number.isFinite(contentLength) && contentLength > MAX_REMOTE_IMAGE_SIZE) {
+    return null;
+  }
+
+  const buf = await response.arrayBuffer();
+  if (buf.byteLength === 0 || buf.byteLength > MAX_REMOTE_IMAGE_SIZE) {
+    return null;
+  }
+
+  const ext = safeImageExt(contentType, image.public_url);
+  const key = `reference-images/${mode}/${new Date().toISOString().slice(0, 10)}/${crypto.randomUUID()}.${ext}`;
+  await bucket.put(key, buf, {
+    httpMetadata: {
+      contentType,
+    },
+  });
+
+  return {
+    source_type: 'url',
+    origin_name: image.origin_name || image.public_url,
+    mime_type: contentType,
+    public_url: makePublicImageUrl(req, key),
+    r2_key: key,
+  };
+}
+
+async function sanitizeReferenceImages(
+  req: NextRequest,
+  images: ReferenceImage[],
+  mode: ContentMode
+) {
   if (images.length === 0) {
     return { usable: [] as ReferenceImage[], skipped: [] as ReferenceImage[] };
   }
@@ -156,8 +244,24 @@ async function sanitizeReferenceImages(images: ReferenceImage[]) {
       if (image.source_type !== 'url') {
         return { image, ok: true };
       }
-      const ok = await canUseRemoteImage(image.public_url);
-      return { image, ok };
+      if (image.r2_key || image.public_url.includes('/api/public/reference-images/')) {
+        return { image, ok: true };
+      }
+
+      const accessible = await canUseRemoteImage(image.public_url);
+      if (!accessible) {
+        return { image, ok: false };
+      }
+
+      try {
+        const mirrored = await mirrorRemoteImageToR2(req, image, mode);
+        if (!mirrored) {
+          return { image, ok: false };
+        }
+        return { image: mirrored, ok: true };
+      } catch {
+        return { image, ok: false };
+      }
     })
   );
 
@@ -198,7 +302,11 @@ export async function POST(req: NextRequest) {
     const strategies = parseStrategies(body.strategies, mode);
     const competitor_info = typeof body.competitor_info === 'string' ? body.competitor_info : undefined;
     const referenceImages = parseReferenceImages(body.reference_images);
-    const { usable: usableReferenceImages, skipped: skippedReferenceImages } = await sanitizeReferenceImages(referenceImages);
+    const { usable: usableReferenceImages, skipped: skippedReferenceImages } = await sanitizeReferenceImages(
+      req,
+      referenceImages,
+      mode
+    );
 
     if (strategies.length === 0) {
       const hint =

@@ -435,6 +435,9 @@ export default function GeneratePage() {
                     reference_images: referenceImages,
                 });
                 const generatedArticles: ArticleResult[] = Array.isArray(response.data.articles) ? response.data.articles : [];
+                const persistedReferenceImages: ReferenceImagePayload[] = Array.isArray(response.data?.reference_images)
+                    ? (response.data.reference_images as ReferenceImagePayload[])
+                    : referenceImages;
                 const first = generatedArticles[0];
                 if (!first || !first.content) {
                     const serverErrors = Array.isArray(response.data?.errors)
@@ -464,7 +467,7 @@ export default function GeneratePage() {
                     strategy_name: first.strategy_name,
                     content: first.content,
                     research_snapshot_id: researchSnapshotId,
-                    reference_images: referenceImages,
+                    reference_images: persistedReferenceImages,
                     source_json_raw: product.source_json_raw,
                 });
 
