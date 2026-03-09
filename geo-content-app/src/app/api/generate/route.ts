@@ -50,6 +50,11 @@ const DEFAULT_BRAND_COMPETITOR_INFO = `
 建议选择3-5家中国市场相关竞争者并给出客观结论。
 `;
 
+const IMAGE_FETCH_HEADERS = {
+  Accept: 'image/*,*/*;q=0.8',
+  'User-Agent': 'Mozilla/5.0 GEOContentAgent/1.0',
+};
+
 function parseMode(raw: unknown): ContentMode {
   return raw === 'brand_ip' ? 'brand_ip' : 'sku';
 }
@@ -94,6 +99,74 @@ function parseReferenceImages(input: unknown): ReferenceImage[] {
   return out;
 }
 
+function extractMessageText(content: unknown): string {
+  if (typeof content === 'string') {
+    return content.trim();
+  }
+  if (!Array.isArray(content)) {
+    return '';
+  }
+  const parts: string[] = [];
+  for (const item of content) {
+    if (!item || typeof item !== 'object') continue;
+    const row = item as Record<string, unknown>;
+    if (typeof row.text === 'string' && row.text.trim()) {
+      parts.push(row.text.trim());
+      continue;
+    }
+    if (typeof row.content === 'string' && row.content.trim()) {
+      parts.push(row.content.trim());
+    }
+  }
+  return parts.join('\n').trim();
+}
+
+async function canUseRemoteImage(url: string): Promise<boolean> {
+  for (const method of ['HEAD', 'GET'] as const) {
+    try {
+      const response = await fetch(url, {
+        method,
+        headers: IMAGE_FETCH_HEADERS,
+        redirect: 'follow',
+      });
+      const contentType = response.headers.get('content-type') || '';
+      if (response.ok && contentType.toLowerCase().startsWith('image/')) {
+        return true;
+      }
+      if (method === 'HEAD' && response.status === 405) {
+        continue;
+      }
+      return false;
+    } catch {
+      if (method === 'GET') {
+        return false;
+      }
+    }
+  }
+  return false;
+}
+
+async function sanitizeReferenceImages(images: ReferenceImage[]) {
+  if (images.length === 0) {
+    return { usable: [] as ReferenceImage[], skipped: [] as ReferenceImage[] };
+  }
+
+  const checks = await Promise.all(
+    images.map(async (image) => {
+      if (image.source_type !== 'url') {
+        return { image, ok: true };
+      }
+      const ok = await canUseRemoteImage(image.public_url);
+      return { image, ok };
+    })
+  );
+
+  return {
+    usable: checks.filter((item) => item.ok).map((item) => item.image),
+    skipped: checks.filter((item) => !item.ok).map((item) => item.image),
+  };
+}
+
 export async function POST(req: NextRequest) {
   const user = await getActiveUser(req);
   if (!user) return unauthorized();
@@ -125,6 +198,7 @@ export async function POST(req: NextRequest) {
     const strategies = parseStrategies(body.strategies, mode);
     const competitor_info = typeof body.competitor_info === 'string' ? body.competitor_info : undefined;
     const referenceImages = parseReferenceImages(body.reference_images);
+    const { usable: usableReferenceImages, skipped: skippedReferenceImages } = await sanitizeReferenceImages(referenceImages);
 
     if (strategies.length === 0) {
       const hint =
@@ -233,8 +307,10 @@ export async function POST(req: NextRequest) {
             `## 商品信息\n- 商品名称：${productName}\n- 价格：¥${productPrice}\n- 材质：${productMaterial}\n- 颜色：${productColor}\n- 描述：${productDescription}\n- 品类：${productCategory}\n- 标签：${productTags.join(', ')}`,
             strategy === 'comparison' || strategy === 'smzdm_review' ? `## 竞品参考信息\n${compInfo}` : '',
             strategy === 'persona' ? `## 用户画像分析\n${DEFAULT_PERSONA_ANALYSIS.trim()}` : '',
-            referenceImages.length > 0
-              ? `## 参考图片说明\n- 已提供 ${referenceImages.length} 张参考图片，请结合图片中的可见信息进行分析。`
+            usableReferenceImages.length > 0
+              ? `## 参考图片说明\n- 已提供 ${usableReferenceImages.length} 张可访问参考图片，请结合图片中的可见信息进行分析。`
+              : skippedReferenceImages.length > 0
+                ? `## 参考图片说明\n- 原始图片URL存在访问限制，本次按纯文本信息完成生成。`
               : '',
             '## 输出要求\n- 不要输出引用编号与来源链接清单样式',
           ]
@@ -248,7 +324,7 @@ export async function POST(req: NextRequest) {
                 role: 'user',
                 content: [
                   { type: 'text', text: prompt },
-                  ...referenceImages.map((image) => ({
+                  ...usableReferenceImages.map((image) => ({
                     type: 'image_url' as const,
                     image_url: { url: image.public_url },
                   })),
@@ -258,10 +334,7 @@ export async function POST(req: NextRequest) {
             temperature: 0.4,
           });
 
-          const content =
-            typeof response.choices[0]?.message?.content === 'string'
-              ? response.choices[0].message.content.trim()
-              : '';
+          const content = extractMessageText(response.choices[0]?.message?.content);
           if (!content) {
             throw new Error('模型返回空内容');
           }
@@ -353,8 +426,10 @@ export async function POST(req: NextRequest) {
             `## 品牌信息\n- 品牌名称：${brandName}\n- 官网：${brandWebsite}\n- 行业提示：${industryHint || '未提供'}\n- 地域：${region}\n- 关键词：${keywords.join(', ') || '未提供'}\n- 补充说明：${brandDescription || '无'}`,
             `## 品牌画像\n${brandProfile}`,
             `## 竞品参考信息\n${compInfo}`,
-            referenceImages.length > 0
-              ? `## 参考图片说明\n- 已提供 ${referenceImages.length} 张参考图片，请结合图片中的品牌/产品信息进行判断。`
+            usableReferenceImages.length > 0
+              ? `## 参考图片说明\n- 已提供 ${usableReferenceImages.length} 张可访问参考图片，请结合图片中的品牌/产品信息进行判断。`
+              : skippedReferenceImages.length > 0
+                ? `## 参考图片说明\n- 原始图片URL存在访问限制，本次按纯文本信息完成生成。`
               : '',
             `## 重要要求\n- 必须明确点名3-5家友商并说明各自核心特点\n- 使用客观理性、信息密度高的表达，不要情绪化废话\n- 不要输出引用编号或来源清单样式`,
           ]
@@ -368,7 +443,7 @@ export async function POST(req: NextRequest) {
                 role: 'user',
                 content: [
                   { type: 'text', text: prompt },
-                  ...referenceImages.map((image) => ({
+                  ...usableReferenceImages.map((image) => ({
                     type: 'image_url' as const,
                     image_url: { url: image.public_url },
                   })),
@@ -378,10 +453,7 @@ export async function POST(req: NextRequest) {
             temperature: 0.4,
           });
 
-          const content =
-            typeof response.choices[0]?.message?.content === 'string'
-              ? response.choices[0].message.content.trim()
-              : '';
+          const content = extractMessageText(response.choices[0]?.message?.content);
           if (!content) {
             throw new Error('模型返回空内容');
           }
@@ -451,6 +523,7 @@ export async function POST(req: NextRequest) {
       research_meta,
       research_snapshot_id,
       reference_images: referenceImages,
+      skipped_reference_images: skippedReferenceImages,
       errors: errors.length > 0 ? errors : undefined,
     });
   } catch (error: unknown) {
