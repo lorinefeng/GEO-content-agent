@@ -12,6 +12,8 @@ export interface CloudflareEnvBindings extends CloudflareEnv {
   OPENAI_API_KEY?: string;
   OPENAI_BASE_URL?: string;
   OPENAI_MODEL?: string;
+  INTERNAL_API_TOKEN?: string;
+  INTERNAL_API_TOKENS?: string;
   EXA_API_KEY?: string;
   EXA_SEARCH_BASE_URL?: string;
   EXA_MCP_BASE_URL?: string;

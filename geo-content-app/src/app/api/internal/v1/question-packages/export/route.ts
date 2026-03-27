@@ -1,22 +1,21 @@
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getD1Database } from '@/lib/cloudflare';
 import { ensureDatabaseReady } from '@/lib/dbInit';
-import { getActiveUser, unauthorized } from '@/lib/apiAuth';
-import { jsonDownloadResponse, serviceErrorResponse } from '@/lib/routeResponses';
+import { assertInternalApiAccess } from '@/lib/internalApiAuth';
+import { serviceErrorResponse } from '@/lib/routeResponses';
 import { exportQuestionPackages } from '@/lib/services/questionPackageService';
 
 export const runtime = 'edge';
 
 export async function POST(req: NextRequest) {
-  const user = await getActiveUser(req);
-  if (!user) return unauthorized();
-
   try {
+    assertInternalApiAccess(req);
     const db = await ensureDatabaseReady(getD1Database());
     const body = (await req.json()) as { ids?: unknown };
     const { filename, payload } = await exportQuestionPackages(db, body.ids);
-    return jsonDownloadResponse(filename, payload);
+    return NextResponse.json({ filename, payload });
   } catch (error) {
-    return serviceErrorResponse(error, 'Failed to export question packages');
+    return serviceErrorResponse(error, 'Failed to export internal question packages');
   }
 }
+

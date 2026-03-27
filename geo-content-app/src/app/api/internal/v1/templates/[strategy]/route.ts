@@ -1,24 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getD1Database } from '@/lib/cloudflare';
 import { ensureDatabaseReady } from '@/lib/dbInit';
-import { getActiveUser, unauthorized } from '@/lib/apiAuth';
+import { assertInternalApiAccess } from '@/lib/internalApiAuth';
 import { serviceErrorResponse } from '@/lib/routeResponses';
 import { parseContentMode } from '@/lib/services/strategyService';
-import { listTemplateRevisions } from '@/lib/services/templateService';
+import { upsertTemplate } from '@/lib/services/templateService';
 
 export const runtime = 'edge';
 
-export async function GET(req: NextRequest, ctx: { params: Promise<{ strategy: string }> }) {
-  const user = await getActiveUser(req);
-  if (!user) return unauthorized();
-
+export async function PUT(req: NextRequest, ctx: { params: Promise<{ strategy: string }> }) {
   try {
+    assertInternalApiAccess(req);
     const db = await ensureDatabaseReady(getD1Database());
     const { strategy } = await ctx.params;
     const { searchParams } = new URL(req.url);
     const mode = parseContentMode(searchParams.get('mode'));
-    return NextResponse.json(await listTemplateRevisions(db, mode, strategy));
+    const body = (await req.json()) as { prompt?: unknown; name?: unknown };
+    return NextResponse.json(await upsertTemplate(db, { mode, strategy, prompt: body.prompt, name: body.name, actorId: 'internal_api' }));
   } catch (error) {
-    return serviceErrorResponse(error, 'Failed to fetch template revisions');
+    return serviceErrorResponse(error, 'Failed to update internal template');
   }
 }
+

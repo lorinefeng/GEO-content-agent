@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getD1Database } from '@/lib/cloudflare';
 import { ensureDatabaseReady } from '@/lib/dbInit';
-import { getActiveUser, unauthorized } from '@/lib/apiAuth';
+import { assertInternalApiAccess } from '@/lib/internalApiAuth';
 import { serviceErrorResponse } from '@/lib/routeResponses';
 import { parseContentMode } from '@/lib/services/strategyService';
 import { rollbackTemplate } from '@/lib/services/templateService';
@@ -9,10 +9,8 @@ import { rollbackTemplate } from '@/lib/services/templateService';
 export const runtime = 'edge';
 
 export async function POST(req: NextRequest, ctx: { params: Promise<{ strategy: string }> }) {
-  const actor = await getActiveUser(req);
-  if (!actor) return unauthorized();
-
   try {
+    assertInternalApiAccess(req);
     const db = await ensureDatabaseReady(getD1Database());
     const { strategy } = await ctx.params;
     const { searchParams } = new URL(req.url);
@@ -23,10 +21,11 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ strategy: 
         mode,
         strategy,
         revisionId: typeof body.revision_id === 'string' ? body.revision_id : '',
-        actorId: actor.id,
+        actorId: 'internal_api',
       })
     );
   } catch (error) {
-    return serviceErrorResponse(error, 'Failed to rollback template');
+    return serviceErrorResponse(error, 'Failed to rollback internal template');
   }
 }
+

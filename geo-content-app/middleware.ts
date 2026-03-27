@@ -7,6 +7,7 @@ const PUBLIC_PATHS = ['/login', '/api/health', '/api/auth/login', '/api/auth/reg
 
 function isPublic(pathname: string) {
   if (PUBLIC_PATHS.includes(pathname)) return true;
+  if (pathname.startsWith('/api/internal/')) return true;
   if (pathname.startsWith('/_next')) return true;
   if (pathname.startsWith('/favicon')) return true;
   if (pathname.startsWith('/public')) return true;
@@ -65,4 +66,3 @@ export async function middleware(req: NextRequest) {
 export const config = {
   matcher: ['/generate', '/history', '/templates', '/admin/:path*', '/api/:path*'],
 };
-

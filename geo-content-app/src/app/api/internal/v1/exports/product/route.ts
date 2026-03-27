@@ -1,23 +1,22 @@
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getD1Database } from '@/lib/cloudflare';
 import { ensureDatabaseReady } from '@/lib/dbInit';
-import { getActiveUser, unauthorized } from '@/lib/apiAuth';
+import { assertInternalApiAccess } from '@/lib/internalApiAuth';
+import { serviceErrorResponse } from '@/lib/routeResponses';
 import { exportProduct } from '@/lib/services/exportService';
-import { jsonDownloadResponse, serviceErrorResponse } from '@/lib/routeResponses';
 
 export const runtime = 'edge';
 
 export async function GET(req: NextRequest) {
-  const user = await getActiveUser(req);
-  if (!user) return unauthorized();
-
   try {
+    assertInternalApiAccess(req);
     const { searchParams } = new URL(req.url);
     const productId = searchParams.get('product_id') || '';
     const db = await ensureDatabaseReady(getD1Database());
     const { filename, payload } = await exportProduct(db, productId);
-    return jsonDownloadResponse(filename, payload);
+    return NextResponse.json({ filename, payload });
   } catch (error) {
-    return serviceErrorResponse(error, 'Failed to export product');
+    return serviceErrorResponse(error, 'Failed to export internal product');
   }
 }
+

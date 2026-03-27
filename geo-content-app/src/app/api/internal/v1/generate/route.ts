@@ -1,21 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getD1Database } from '@/lib/cloudflare';
 import { ensureDatabaseReady } from '@/lib/dbInit';
-import { getActiveUser, unauthorized } from '@/lib/apiAuth';
-import { generateContent } from '@/lib/services/generateService';
+import { assertInternalApiAccess } from '@/lib/internalApiAuth';
 import { serviceErrorResponse } from '@/lib/routeResponses';
+import { generateAndMaybePersist } from '@/lib/services/internalGenerateService';
 
 export const runtime = 'edge';
 
 export async function POST(req: NextRequest) {
-  const user = await getActiveUser(req);
-  if (!user) return unauthorized();
-
   try {
+    assertInternalApiAccess(req);
     const db = await ensureDatabaseReady(getD1Database());
     const body = (await req.json()) as Record<string, unknown>;
-    return NextResponse.json(await generateContent(req, db, body));
+    return NextResponse.json(await generateAndMaybePersist(req, db, body));
   } catch (error) {
-    return serviceErrorResponse(error, 'Failed to generate content');
+    return serviceErrorResponse(error, 'Failed to generate internal content');
   }
 }
+
