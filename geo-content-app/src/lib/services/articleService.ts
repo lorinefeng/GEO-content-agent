@@ -2,6 +2,10 @@ import type { D1Database, R2Bucket } from '@cloudflare/workers-types';
 import { generateQuestionPackagePayload, upsertQuestionPackage } from '@/lib/questionPackages';
 import { ServiceError, ensureString } from '@/lib/serviceError';
 import type { ContentMode } from '@/lib/services/strategyService';
+import {
+  getSharedQuestionKeywordsForProduct,
+  syncQuestionPackageKeywordsForProduct,
+} from '@/lib/services/questionPackageService';
 
 type ReferenceImageInput = {
   public_url: string;
@@ -218,7 +222,8 @@ export async function createArticle(db: D1Database, input: CreateArticleInput) {
         sourceJsonRaw: source_json_raw || null,
         content,
       };
-      const packageResult = await generateQuestionPackagePayload(packageInput);
+      const sharedKeywords = await getSharedQuestionKeywordsForProduct(db, packageInput);
+      const packageResult = await generateQuestionPackagePayload(packageInput, { fixedKeywords: sharedKeywords });
       questionPackageStatus = packageResult.status;
       questionPackageError = packageResult.errorMessage || null;
 
@@ -229,6 +234,7 @@ export async function createArticle(db: D1Database, input: CreateArticleInput) {
         packageResult.status,
         packageResult.errorMessage
       );
+      await syncQuestionPackageKeywordsForProduct(db, packageInput.productId, packageResult.payload.keywords);
     } catch (error) {
       questionPackageStatus = 'failed';
       questionPackageError = error instanceof Error ? error.message : String(error);

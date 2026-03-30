@@ -71,18 +71,75 @@ const QUESTION_LIMITS: Record<QuestionGranularity, { min: number; max: number }>
 
 type ParsedSourceContext = {
   category: string;
+  categoryTerms: string[];
   material: string;
   color: string;
   description: string;
   tags: string[];
   season: string;
   personaHint: string;
+  sceneHint: string;
   brandHint: string;
 };
 
 const normalizeWhitespace = (value: string) => value.replace(/\s+/g, ' ').trim();
 
 const compactText = (value: string) => value.replace(/\s+/g, '').trim();
+
+const CATEGORY_SPLITTER = /[,\n\r\t|/，、;；]+/;
+
+const FEATURE_PATTERNS = [
+  '高领',
+  '圆领',
+  'V领',
+  '立领',
+  '翻领',
+  '无袖',
+  '短袖',
+  '长袖',
+  '修身',
+  '宽松',
+  '显瘦',
+  '直筒',
+  '阔腿',
+  '高腰',
+  '针织',
+  '牛仔',
+  '纯棉',
+  '轻薄',
+  '透气',
+  '保暖',
+] as const;
+
+const GENERIC_TERMS = new Set([
+  '商品',
+  '服装',
+  '成衣',
+  '新品',
+  '新款',
+  '女装',
+  '男装',
+  '女士',
+  '男士',
+  '儿童',
+  '童装',
+  '配饰',
+  '上装',
+]);
+
+const normalizeKeywordText = (value: string) =>
+  normalizeWhitespace(value)
+    .replace(/\$[A-Za-z0-9_-]+/g, '')
+    .replace(/[|]/g, ' ')
+    .trim();
+
+const isGenericTerm = (value: string) => GENERIC_TERMS.has(value);
+
+const splitSourceTerms = (value: string) =>
+  value
+    .split(CATEGORY_SPLITTER)
+    .map((item) => normalizeKeywordText(item))
+    .filter((item) => item.length >= 2 && item.length <= 20 && !/^https?:\/\//i.test(item));
 
 const truncateForPrompt = (value: string, maxChars: number) => {
   if (value.length <= maxChars) return value;
@@ -146,6 +203,8 @@ const buildPriceBand = (price: number) => {
 const detectSeason = (text: string) => {
   const joined = compactText(text);
   if (!joined) return '当季';
+  if (joined.includes('早秋')) return '早秋';
+  if (joined.includes('初秋')) return '初秋';
   if (joined.includes('春')) return '春季';
   if (joined.includes('夏')) return '夏季';
   if (joined.includes('秋')) return '秋季';
@@ -162,6 +221,15 @@ const detectPersonaHint = (text: string, tags: string[]) => {
   return '注重性价比与日常穿搭的人群';
 };
 
+const detectSceneHint = (text: string, tags: string[]) => {
+  const joined = `${text} ${tags.join(' ')}`;
+  if (/通勤|上班|职场|商务/.test(joined)) return '通勤穿搭';
+  if (/学生|校园/.test(joined)) return '校园穿搭';
+  if (/户外|机能|运动/.test(joined)) return '运动穿搭';
+  if (/约会|出街|潮流/.test(joined)) return '日常穿搭';
+  return '';
+};
+
 const detectBrandHint = (productName: string) => {
   const trimmed = productName.trim();
   if (!trimmed) return '';
@@ -173,13 +241,14 @@ const detectBrandHint = (productName: string) => {
 
 const parseSourceContext = (input: QuestionPackageInput): ParsedSourceContext => {
   const rawJson = input.sourceJsonRaw?.trim() || input.productPayload?.trim() || '';
-  const parsed =
-    rawJson && typeof safeJsonParse(rawJson) === 'object'
-      ? (safeJsonParse(rawJson) as Record<string, unknown>)
-      : null;
+  const parsedValue = rawJson ? safeJsonParse(rawJson) : null;
+  const parsed = parsedValue && typeof parsedValue === 'object' ? (parsedValue as Record<string, unknown>) : null;
 
   const tags = Array.isArray(parsed?.tags)
-    ? parsed?.tags.filter((item): item is string => typeof item === 'string').map((item) => item.trim()).filter(Boolean)
+    ? parsed?.tags
+        .filter((item): item is string => typeof item === 'string')
+        .flatMap((item) => splitSourceTerms(item))
+        .filter(Boolean)
     : [];
   const description =
     typeof parsed?.description === 'string'
@@ -187,24 +256,28 @@ const parseSourceContext = (input: QuestionPackageInput): ParsedSourceContext =>
       : typeof parsed?.desc === 'string'
         ? parsed.desc
         : '';
-  const category =
+  const categoryRaw =
     typeof parsed?.category === 'string'
-      ? parsed.category.trim()
+      ? parsed.category
       : typeof parsed?.mainCategory === 'string'
-        ? parsed.mainCategory.trim()
-        : '商品';
+        ? parsed.mainCategory
+        : '';
+  const categoryTerms = splitSourceTerms(categoryRaw);
+  const category = categoryTerms[0] || '商品';
   const material = typeof parsed?.material === 'string' ? parsed.material.trim() : '';
   const color = typeof parsed?.color === 'string' ? parsed.color.trim() : '';
-  const joinedText = `${input.productName} ${description} ${input.content}`;
+  const sourceOnlyText = `${input.productName} ${description} ${rawJson} ${tags.join(' ')}`.trim();
 
   return {
     category: category || '商品',
+    categoryTerms,
     material,
     color,
     description,
     tags,
-    season: detectSeason(`${joinedText} ${rawJson}`),
-    personaHint: detectPersonaHint(joinedText, tags),
+    season: detectSeason(sourceOnlyText),
+    personaHint: detectPersonaHint(sourceOnlyText, tags),
+    sceneHint: detectSceneHint(sourceOnlyText, tags),
     brandHint: detectBrandHint(input.productName),
   };
 };
@@ -215,34 +288,83 @@ const uniquePush = <T,>(items: T[], value: T, getKey: (entry: T) => string) => {
   items.push(value);
 };
 
-const buildFallbackKeywords = (input: QuestionPackageInput, context: ParsedSourceContext): QuestionKeyword[] => {
-  const priceBand = buildPriceBand(input.productPrice);
-  const keywords: QuestionKeyword[] = [];
+const pickPrimaryCategory = (productName: string, context: ParsedSourceContext) => {
+  const product = compactText(productName);
+  const scored = context.categoryTerms
+    .map((term) => {
+      const compact = compactText(term);
+      let score = term.length;
+      if (product.includes(compact)) score += 10;
+      if (!isGenericTerm(term)) score += 5;
+      if (term.length > 8) score -= 2;
+      return { term, score };
+    })
+    .sort((a, b) => b.score - a.score);
 
-  uniquePush(keywords, { keyword: `${context.season}${context.category}`.trim(), bucket: 'category' }, (entry) => entry.keyword);
-  uniquePush(keywords, { keyword: context.category, bucket: 'category' }, (entry) => entry.keyword);
-  if (context.material) {
-    uniquePush(keywords, { keyword: context.material, bucket: 'feature' }, (entry) => entry.keyword);
-  }
-  if (context.color) {
-    uniquePush(keywords, { keyword: `${context.color}${context.category}`.trim(), bucket: 'feature' }, (entry) => entry.keyword);
-  }
-  uniquePush(keywords, { keyword: priceBand.rangeQuery, bucket: 'price' }, (entry) => entry.keyword);
-  if (priceBand.exact) {
-    uniquePush(keywords, { keyword: priceBand.exact, bucket: 'price' }, (entry) => entry.keyword);
-  }
-  uniquePush(keywords, { keyword: context.personaHint, bucket: 'persona' }, (entry) => entry.keyword);
-  if (context.brandHint) {
-    uniquePush(keywords, { keyword: context.brandHint, bucket: 'brand' }, (entry) => entry.keyword);
-  }
-
-  const tagKeywords = context.tags.slice(0, 2);
-  for (const tag of tagKeywords) {
-    uniquePush(keywords, { keyword: tag, bucket: 'feature' }, (entry) => entry.keyword);
-  }
-
-  return keywords.slice(0, 8);
+  return scored[0]?.term || context.category || '商品';
 };
+
+const buildFeatureKeywords = (productName: string, primaryCategory: string, context: ParsedSourceContext) => {
+  const source = `${productName} ${context.description} ${context.tags.join(' ')}`;
+  const features: string[] = [];
+  for (const pattern of FEATURE_PATTERNS) {
+    if (!source.includes(pattern)) continue;
+    const combined =
+      primaryCategory && !isGenericTerm(primaryCategory)
+        ? `${pattern}${primaryCategory}`
+        : pattern;
+    uniquePush(features, normalizeKeywordText(combined), (entry) => entry);
+    if (features.length >= 2) break;
+  }
+  return features;
+};
+
+export const buildCanonicalQuestionKeywords = (input: QuestionPackageInput): QuestionKeyword[] => {
+  const context = parseSourceContext(input);
+  const keywords: QuestionKeyword[] = [];
+  const primaryCategory = pickPrimaryCategory(input.productName, context);
+  const featureKeywords = buildFeatureKeywords(input.productName, primaryCategory, context);
+
+  uniquePush(
+    keywords,
+    { keyword: normalizeKeywordText(input.productName), bucket: 'category' },
+    (entry) => entry.keyword.toLowerCase()
+  );
+
+  if (context.brandHint) {
+    uniquePush(keywords, { keyword: context.brandHint, bucket: 'brand' }, (entry) => entry.keyword.toLowerCase());
+  }
+
+  if (Number.isFinite(input.productPrice) && input.productPrice > 0) {
+    uniquePush(keywords, { keyword: `${input.productPrice}元`, bucket: 'price' }, (entry) => entry.keyword.toLowerCase());
+  }
+
+  for (const feature of featureKeywords) {
+    uniquePush(keywords, { keyword: feature, bucket: 'feature' }, (entry) => entry.keyword.toLowerCase());
+  }
+
+  if (context.sceneHint) {
+    uniquePush(keywords, { keyword: context.sceneHint, bucket: 'persona' }, (entry) => entry.keyword.toLowerCase());
+  } else if (context.season !== '当季' && primaryCategory && !isGenericTerm(primaryCategory)) {
+    uniquePush(
+      keywords,
+      { keyword: `${context.season}${primaryCategory}`, bucket: 'category' },
+      (entry) => entry.keyword.toLowerCase()
+    );
+  }
+
+  if (primaryCategory && !isGenericTerm(primaryCategory)) {
+    uniquePush(keywords, { keyword: primaryCategory, bucket: 'category' }, (entry) => entry.keyword.toLowerCase());
+  }
+
+  const cleanKeywords = keywords
+    .map((entry) => ({ ...entry, keyword: normalizeKeywordText(entry.keyword) }))
+    .filter((entry) => entry.keyword.length >= 2 && entry.keyword.length <= 20);
+
+  return cleanKeywords.slice(0, 6);
+};
+
+const buildFallbackKeywords = (input: QuestionPackageInput): QuestionKeyword[] => buildCanonicalQuestionKeywords(input);
 
 const buildFallbackQuestions = (input: QuestionPackageInput, context: ParsedSourceContext) => {
   const priceBand = buildPriceBand(input.productPrice);
@@ -308,10 +430,13 @@ const buildFallbackQuestions = (input: QuestionPackageInput, context: ParsedSour
   };
 };
 
-const buildFallbackPayload = (input: QuestionPackageInput): QuestionPackagePayload => {
+const buildFallbackPayload = (input: QuestionPackageInput, fixedKeywords?: QuestionKeyword[] | null): QuestionPackagePayload => {
   const now = new Date().toISOString();
   const context = parseSourceContext(input);
-  const keywords = buildFallbackKeywords(input, context);
+  const keywords =
+    fixedKeywords && fixedKeywords.length > 0
+      ? fixedKeywords.map((entry) => ({ ...entry, keyword: normalizeKeywordText(entry.keyword) })).filter((entry) => entry.keyword)
+      : buildFallbackKeywords(input);
   const questions = buildFallbackQuestions(input, context);
 
   return {
@@ -327,6 +452,55 @@ const buildFallbackPayload = (input: QuestionPackageInput): QuestionPackagePaylo
     generated_at: now,
     updated_at: now,
   };
+};
+
+export const normalizeQuestionKeywords = (rawKeywords: unknown, fallbackKeywords: QuestionKeyword[]): QuestionKeyword[] => {
+  const normalizedKeywords: QuestionKeyword[] = [];
+  const sourceItems = Array.isArray(rawKeywords) ? rawKeywords : [];
+
+  for (const item of sourceItems) {
+    if (typeof item === 'string') {
+      const keyword = normalizeKeywordText(item);
+      if (!keyword) continue;
+      uniquePush(normalizedKeywords, { keyword, bucket: 'category' }, (entry) => entry.keyword.toLowerCase());
+      continue;
+    }
+    if (!item || typeof item !== 'object') continue;
+    const keywordRow = item as Record<string, unknown>;
+    const keyword =
+      typeof keywordRow.keyword === 'string'
+        ? normalizeKeywordText(keywordRow.keyword)
+        : typeof keywordRow.value === 'string'
+          ? normalizeKeywordText(keywordRow.value)
+          : '';
+    const bucket = normalizeBucket(keywordRow.bucket) ?? 'category';
+    if (!keyword) continue;
+    uniquePush(normalizedKeywords, { keyword, bucket }, (entry) => entry.keyword.toLowerCase());
+    if (normalizedKeywords.length >= 8) break;
+  }
+
+  for (const keyword of fallbackKeywords) {
+    if (normalizedKeywords.length >= 8) break;
+    uniquePush(
+      normalizedKeywords,
+      { keyword: normalizeKeywordText(keyword.keyword), bucket: keyword.bucket },
+      (entry) => entry.keyword.toLowerCase()
+    );
+  }
+
+  const trimmedKeywords = normalizedKeywords.slice(0, 8);
+  while (trimmedKeywords.length < 5 && fallbackKeywords[trimmedKeywords.length]) {
+    uniquePush(
+      trimmedKeywords,
+      {
+        keyword: normalizeKeywordText(fallbackKeywords[trimmedKeywords.length].keyword),
+        bucket: fallbackKeywords[trimmedKeywords.length].bucket,
+      },
+      (entry) => entry.keyword.toLowerCase()
+    );
+  }
+
+  return trimmedKeywords;
 };
 
 const normalizeQuestionItem = (
@@ -374,47 +548,19 @@ const normalizeQuestionItem = (
 export const normalizeQuestionPackagePayload = (
   raw: unknown,
   input: QuestionPackageInput,
-  options?: { preserveGeneratedAt?: string | null }
+  options?: { preserveGeneratedAt?: string | null; fixedKeywords?: QuestionKeyword[] | null }
 ): QuestionPackagePayload => {
-  const fallback = buildFallbackPayload(input);
+  const fallback = buildFallbackPayload(input, options?.fixedKeywords);
   if (!raw || typeof raw !== 'object') {
     return fallback;
   }
 
   const row = raw as Record<string, unknown>;
-  const normalizedKeywords: QuestionKeyword[] = [];
-  const rawKeywords = Array.isArray(row.keywords) ? row.keywords : [];
-
-  for (const item of rawKeywords) {
-    if (typeof item === 'string') {
-      const keyword = normalizeWhitespace(item);
-      if (!keyword) continue;
-      uniquePush(normalizedKeywords, { keyword, bucket: 'category' }, (entry) => entry.keyword.toLowerCase());
-      continue;
-    }
-    if (!item || typeof item !== 'object') continue;
-    const keywordRow = item as Record<string, unknown>;
-    const keyword =
-      typeof keywordRow.keyword === 'string'
-        ? normalizeWhitespace(keywordRow.keyword)
-        : typeof keywordRow.value === 'string'
-          ? normalizeWhitespace(keywordRow.value)
-          : '';
-    const bucket = normalizeBucket(keywordRow.bucket) ?? 'category';
-    if (!keyword) continue;
-    uniquePush(normalizedKeywords, { keyword, bucket }, (entry) => entry.keyword.toLowerCase());
-    if (normalizedKeywords.length >= 8) break;
-  }
-
-  for (const keyword of fallback.keywords) {
-    if (normalizedKeywords.length >= 8) break;
-    uniquePush(normalizedKeywords, keyword, (entry) => entry.keyword.toLowerCase());
-  }
-
-  const trimmedKeywords = normalizedKeywords.slice(0, 8);
-  while (trimmedKeywords.length < 5 && fallback.keywords[trimmedKeywords.length]) {
-    uniquePush(trimmedKeywords, fallback.keywords[trimmedKeywords.length], (entry) => entry.keyword.toLowerCase());
-  }
+  const fixedKeywords =
+    options?.fixedKeywords && options.fixedKeywords.length > 0
+      ? normalizeQuestionKeywords(options.fixedKeywords, fallback.keywords)
+      : null;
+  const trimmedKeywords = fixedKeywords ?? normalizeQuestionKeywords(row.keywords, fallback.keywords);
 
   const rawQuestions =
     row.questions && typeof row.questions === 'object' ? (row.questions as Record<string, unknown>) : {};
@@ -455,7 +601,7 @@ export const normalizeQuestionPackagePayload = (
   };
 };
 
-const buildPrompt = (input: QuestionPackageInput) => {
+const buildPrompt = (input: QuestionPackageInput, fixedKeywords: QuestionKeyword[]) => {
   const context = parseSourceContext(input);
   const priceBand = buildPriceBand(input.productPrice);
   const rawSource = truncateForPrompt(input.sourceJsonRaw?.trim() || input.productPayload?.trim() || '{}', 12000);
@@ -467,7 +613,7 @@ const buildPrompt = (input: QuestionPackageInput) => {
 
 必须遵守：
 1. 只输出一个 JSON 对象，不要输出 Markdown、解释、注释或代码块。
-2. keywords 总数必须为 5 到 8 个。
+2. keywords 已经预先确定，必须原样使用，不要新增、删减、改写或重排。
 3. keywords 中每项都必须包含 keyword 和 bucket。
 4. bucket 只能是 category / feature / price / persona / brand。
 5. coarse 问题输出 2 到 3 个。
@@ -487,9 +633,7 @@ const buildPrompt = (input: QuestionPackageInput) => {
   "product_name": "${input.productName}",
   "strategy": "${input.strategy}",
   "strategy_name": "${input.strategyName}",
-  "keywords": [
-    { "keyword": "示例", "bucket": "category" }
-  ],
+  "keywords": ${JSON.stringify(fixedKeywords, null, 2)},
   "questions": {
     "coarse": [
       {
@@ -525,15 +669,22 @@ ${articleContent}
 `;
 };
 
-export const generateQuestionPackagePayload = async (input: QuestionPackageInput) => {
+export const generateQuestionPackagePayload = async (
+  input: QuestionPackageInput,
+  options?: { fixedKeywords?: QuestionKeyword[] | null }
+) => {
   const env = getCloudflareEnv();
   const apiKey = env.OPENAI_API_KEY;
   const baseURL = env.OPENAI_BASE_URL;
   const model =
     typeof env.OPENAI_MODEL === 'string' && env.OPENAI_MODEL ? env.OPENAI_MODEL : 'gemini-3-flash-preview';
+  const fixedKeywords =
+    options?.fixedKeywords && options.fixedKeywords.length > 0
+      ? normalizeQuestionKeywords(options.fixedKeywords, buildCanonicalQuestionKeywords(input))
+      : buildCanonicalQuestionKeywords(input);
 
   if (!apiKey) {
-    const fallback = buildFallbackPayload(input);
+    const fallback = buildFallbackPayload(input, fixedKeywords);
     return { payload: fallback, status: 'fallback' as QuestionPackageStatus, errorMessage: '缺少 OPENAI_API_KEY' };
   }
 
@@ -548,7 +699,7 @@ export const generateQuestionPackagePayload = async (input: QuestionPackageInput
         },
         {
           role: 'user',
-          content: buildPrompt(input),
+          content: buildPrompt(input, fixedKeywords),
         },
       ],
       temperature: 0.3,
@@ -561,13 +712,13 @@ export const generateQuestionPackagePayload = async (input: QuestionPackageInput
     }
 
     return {
-      payload: normalizeQuestionPackagePayload(parsed, input),
+      payload: normalizeQuestionPackagePayload(parsed, input, { fixedKeywords }),
       status: 'generated' as QuestionPackageStatus,
       errorMessage: null,
     };
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
-    const fallback = buildFallbackPayload(input);
+    const fallback = buildFallbackPayload(input, fixedKeywords);
     return {
       payload: fallback,
       status: 'fallback' as QuestionPackageStatus,

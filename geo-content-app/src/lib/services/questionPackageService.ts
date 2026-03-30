@@ -1,5 +1,11 @@
 import type { D1Database } from '@cloudflare/workers-types';
-import { normalizeQuestionPackagePayload } from '@/lib/questionPackages';
+import {
+  buildCanonicalQuestionKeywords,
+  normalizeQuestionKeywords,
+  normalizeQuestionPackagePayload,
+  type QuestionKeyword,
+  type QuestionPackageInput,
+} from '@/lib/questionPackages';
 import { ServiceError } from '@/lib/serviceError';
 
 const parsePackageJsonInput = (raw: unknown) => {
@@ -12,6 +18,104 @@ const parsePackageJsonInput = (raw: unknown) => {
   }
   return raw;
 };
+
+const buildQuestionPackageInputFromRow = (row: Record<string, unknown>): QuestionPackageInput => ({
+  articleId: typeof row.article_id === 'string' ? row.article_id : '',
+  productId: typeof row.product_id === 'string' ? row.product_id : '',
+  productName: typeof row.product_name === 'string' ? row.product_name : '',
+  strategy: typeof row.strategy === 'string' ? row.strategy : '',
+  strategyName: typeof row.strategy_name === 'string' ? row.strategy_name : '',
+  productPrice: typeof row.product_price === 'number' ? row.product_price : 0,
+  productPayload: typeof row.product_payload === 'string' ? row.product_payload : null,
+  sourceJsonRaw: typeof row.source_json_raw === 'string' ? row.source_json_raw : null,
+  content: typeof row.content === 'string' ? row.content : '',
+});
+
+const parseStoredPackageJson = (raw: unknown) => {
+  if (typeof raw !== 'string') return null;
+  try {
+    return JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+};
+
+export async function getSharedQuestionKeywordsForProduct(db: D1Database, input: QuestionPackageInput): Promise<QuestionKeyword[]> {
+  const normalizedProductId = input.productId.trim();
+  const canonical = buildCanonicalQuestionKeywords(input);
+  if (!normalizedProductId) return canonical;
+
+  const result = await db
+    .prepare(
+      `SELECT
+        qp.package_json, qp.status,
+        qp.article_id, qp.product_id, qp.product_name,
+        qp.strategy, qp.strategy_name,
+        a.product_price, a.product_payload, a.source_json_raw, a.content
+      FROM QuestionPackage qp
+      LEFT JOIN Article a ON a.id = qp.article_id
+      WHERE qp.mode = 'sku' AND qp.product_id = ?
+      ORDER BY CASE WHEN qp.status = 'edited' THEN 0 ELSE 1 END, qp.updated_at DESC, qp.created_at DESC
+      LIMIT 20`
+    )
+    .bind(normalizedProductId)
+    .all();
+
+  for (const row of result.results ?? []) {
+    const record = row as Record<string, unknown>;
+    if (record.status !== 'edited') continue;
+    const parsed = parseStoredPackageJson(record.package_json);
+    if (!parsed) continue;
+    const normalized = normalizeQuestionKeywords(parsed.keywords, canonical);
+    if (normalized.length > 0) return normalized;
+  }
+
+  return canonical;
+}
+
+export async function syncQuestionPackageKeywordsForProduct(
+  db: D1Database,
+  productId: string,
+  keywords: QuestionKeyword[]
+) {
+  const normalizedProductId = productId.trim();
+  if (!normalizedProductId || keywords.length === 0) return;
+
+  const result = await db
+    .prepare(
+      `SELECT
+        qp.id, qp.package_json,
+        qp.article_id, qp.product_id, qp.product_name,
+        qp.strategy, qp.strategy_name,
+        a.product_price, a.product_payload, a.source_json_raw, a.content
+      FROM QuestionPackage qp
+      LEFT JOIN Article a ON a.id = qp.article_id
+      WHERE qp.mode = 'sku' AND qp.product_id = ?`
+    )
+    .bind(normalizedProductId)
+    .all();
+
+  for (const row of result.results ?? []) {
+    const record = row as Record<string, unknown>;
+    const parsed = parseStoredPackageJson(record.package_json);
+    if (!parsed) continue;
+
+    let existingGeneratedAt: string | null = null;
+    if (typeof parsed.generated_at === 'string') {
+      existingGeneratedAt = parsed.generated_at;
+    }
+
+    const normalizedPayload = normalizeQuestionPackagePayload(parsed, buildQuestionPackageInputFromRow(record), {
+      preserveGeneratedAt: existingGeneratedAt,
+      fixedKeywords: keywords,
+    });
+
+    await db
+      .prepare(`UPDATE QuestionPackage SET package_json = ?, updated_at = datetime('now') WHERE id = ?`)
+      .bind(JSON.stringify(normalizedPayload, null, 2), record.id)
+      .run();
+  }
+}
 
 export async function listQuestionPackages(db: D1Database) {
   const result = await db
@@ -96,17 +200,7 @@ export async function updateQuestionPackage(db: D1Database, id: string, packageJ
 
   const normalized = normalizeQuestionPackagePayload(
     nextRaw,
-    {
-      articleId: typeof existing.article_id === 'string' ? existing.article_id : '',
-      productId: typeof existing.product_id === 'string' ? existing.product_id : '',
-      productName: typeof existing.product_name === 'string' ? existing.product_name : '',
-      strategy: typeof existing.strategy === 'string' ? existing.strategy : '',
-      strategyName: typeof existing.strategy_name === 'string' ? existing.strategy_name : '',
-      productPrice: typeof existing.product_price === 'number' ? existing.product_price : 0,
-      productPayload: typeof existing.product_payload === 'string' ? existing.product_payload : null,
-      sourceJsonRaw: typeof existing.source_json_raw === 'string' ? existing.source_json_raw : null,
-      content: typeof existing.content === 'string' ? existing.content : '',
-    },
+    buildQuestionPackageInputFromRow(existing),
     { preserveGeneratedAt: existingGeneratedAt }
   );
 
@@ -118,6 +212,12 @@ export async function updateQuestionPackage(db: D1Database, id: string, packageJ
     )
     .bind(JSON.stringify(normalized, null, 2), id)
     .run();
+
+  await syncQuestionPackageKeywordsForProduct(
+    db,
+    typeof existing.product_id === 'string' ? existing.product_id : '',
+    normalized.keywords
+  );
 
   return {
     success: true,
